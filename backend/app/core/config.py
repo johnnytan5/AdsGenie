@@ -20,17 +20,12 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
     ]
 
-    # Security
-    SECRET_KEY: str = "your-secret-key-change-this-in-production"
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-
     # Environment
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
 
     # AWS Configuration
-    AWS_REGION: str = "us-east-1"
+    AWS_REGION: str = "ap-southeast-1"
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
 
