@@ -20,9 +20,6 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
     ]
 
-    # Database
-    DATABASE_URL: Optional[str] = "sqlite:///./adsgenie.db"
-
     # Security
     SECRET_KEY: str = "your-secret-key-change-this-in-production"
     ALGORITHM: str = "HS256"
@@ -31,6 +28,25 @@ class Settings(BaseSettings):
     # Environment
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
+
+    # AWS Configuration
+    AWS_REGION: str = "us-east-1"
+    AWS_ACCESS_KEY_ID: Optional[str] = None
+    AWS_SECRET_ACCESS_KEY: Optional[str] = None
+
+    # DynamoDB
+    DYNAMODB_TABLE_NAME: str = "Projects"
+    DYNAMODB_ENDPOINT_URL: Optional[str] = None  # For local development
+
+    # S3
+    S3_BUCKET_NAME: str = "adsgenie-assets"
+    S3_ENDPOINT_URL: Optional[str] = None  # For local development
+
+    # AI Services
+    NANOBANANA_API_KEY: Optional[str] = None
+    NANOBANANA_API_URL: str = "https://api.nanobanana.com/v1"
+    VEO3_API_KEY: Optional[str] = None
+    VEO3_API_URL: str = "https://api.veo3.com/v1"
 
     class Config:
         env_file = ".env"

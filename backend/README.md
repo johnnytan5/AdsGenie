@@ -13,12 +13,8 @@ backend/
 │   │   └── v1/
 │   │       ├── api.py          # Main API router
 │   │       └── endpoints/      # Individual endpoint modules
-│   ├── core/                   # Core configuration
-│   │   ├── config.py          # Application settings
-│   │   └── database.py        # Database setup
-│   ├── models/                 # SQLAlchemy models
-│   ├── schemas/                # Pydantic schemas
-│   └── crud/                   # CRUD operations
+│   └── core/                   # Core configuration
+│       └── config.py          # Application settings
 ├── requirements.txt
 ├── .env.example
 └── README.md
@@ -42,11 +38,6 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-4. Initialize the database:
-```bash
-python -c "from app.core.database import Base, engine; Base.metadata.create_all(bind=engine)"
-```
-
 ## Running the Application
 
 Start the development server:
@@ -64,14 +55,8 @@ The API will be available at:
 - `GET /` - Root endpoint
 - `GET /health` - Health check
 - `GET /api/v1/health` - API health check
-- `GET /api/v1/example` - Get all examples
-- `POST /api/v1/example` - Create an example
-- `GET /api/v1/example/{id}` - Get example by ID
 
 ## Development
 
-- Add new models in `app/models/`
-- Add corresponding schemas in `app/schemas/`
-- Add CRUD operations in `app/crud/`
 - Add endpoints in `app/api/v1/endpoints/`
 - Register new routers in `app/api/v1/api.py`
