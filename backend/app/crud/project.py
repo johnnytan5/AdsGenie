@@ -390,10 +390,17 @@ def add_scene(project_id: str, scene_data: SceneCreate, sketch_s3_url: Optional[
         "order": max_order + 1,
         "duration": scene_data.duration,
         "description": scene_data.description,
+        "image_description": None,  # Initialize as None, can be set later
         "sketch_s3_url": sketch_s3_url,
         "generated_image_s3_url": None,
         "generated_video_s3_url": None,
         "status": "pending",
+        "voiceover_enabled": False,
+        "voiceover_text": None,
+        "voiceover_gender": "male",
+        "background_music_enabled": False,
+        "use_global_character_for_image": False,
+        "use_global_setting_for_image": False,
     }
 
     scenes.append(new_scene)
@@ -439,6 +446,25 @@ def update_scene(
         scene["sketch_s3_url"] = sketch_s3_url
         # Reset status to pending if sketch changed
         scene["status"] = "pending"
+    # Update image_description field (separate from description)
+    if scene_data.image_description is not None:
+        scene["image_description"] = scene_data.image_description
+    
+    # Update image generation settings
+    if scene_data.use_global_character_for_image is not None:
+        scene["use_global_character_for_image"] = scene_data.use_global_character_for_image
+    if scene_data.use_global_setting_for_image is not None:
+        scene["use_global_setting_for_image"] = scene_data.use_global_setting_for_image
+    
+    # Update audio fields
+    if scene_data.voiceover_enabled is not None:
+        scene["voiceover_enabled"] = scene_data.voiceover_enabled
+    if scene_data.voiceover_text is not None:
+        scene["voiceover_text"] = scene_data.voiceover_text
+    if scene_data.voiceover_gender is not None:
+        scene["voiceover_gender"] = scene_data.voiceover_gender
+    if scene_data.background_music_enabled is not None:
+        scene["background_music_enabled"] = scene_data.background_music_enabled
 
     table = get_projects_table()
     try:

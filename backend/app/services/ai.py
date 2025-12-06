@@ -24,7 +24,22 @@ def get_genai_client() -> genai.Client:
 
 
 async def download_image(url: str) -> Image.Image:
-    """Download image from URL and return PIL Image."""
+    """Download image from URL and return PIL Image.
+    
+    Handles both S3 URLs (using boto3) and regular HTTP URLs.
+    """
+    from app.core.s3 import extract_s3_key_from_url, download_file_from_s3
+    from app.core.config import settings
+    
+    # Check if it's an S3 URL
+    if settings.S3_BUCKET_NAME in url:
+        s3_key = extract_s3_key_from_url(url)
+        if s3_key:
+            # Download from S3 using boto3
+            image_bytes = download_file_from_s3(s3_key)
+            return Image.open(BytesIO(image_bytes))
+    
+    # Otherwise, download via HTTP
     async with httpx.AsyncClient() as client:
         response = await client.get(url, timeout=60.0)
         response.raise_for_status()
@@ -96,6 +111,105 @@ async def generate_image_nanobanana(
                 
                 try:
                     # Save to file (this works according to the guide)
+                    image.save(tmp_path)
+                    # Read the file back as bytes
+                    with open(tmp_path, 'rb') as f:
+                        image_bytes = f.read()
+                finally:
+                    # Clean up temp file
+                    if os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
+                
+                return {
+                    "success": True,
+                    "image_bytes": image_bytes,
+                }
+        
+        return {
+            "success": False,
+            "error": "No image generated in response",
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
+
+async def generate_image_gemini3_pro(
+    description: str,
+    aspect_ratio: str = "16:9",
+    sketch_url: Optional[str] = None,
+    global_character_url: Optional[str] = None,
+    global_setting_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Generate image using Gemini 3 Pro Preview with multi-image support.
+    
+    Supports up to 14 reference images (up to 6 objects, up to 5 humans).
+    
+    Args:
+        description: Image description (text prompt)
+        aspect_ratio: Aspect ratio for the generated image (e.g., "16:9", "1:1")
+        sketch_url: Optional sketch image URL (object reference)
+        global_character_url: Optional global character image URL (human reference)
+        global_setting_url: Optional global setting image URL (object reference)
+    
+    Returns:
+        Dictionary with generated image bytes or error
+    """
+    try:
+        client = get_genai_client()
+        
+        # Prepare contents list with prompt
+        contents = [description]
+        
+        # Add reference images (up to 14 total: 6 objects, 5 humans)
+        reference_images = []
+        
+        # Add sketch if provided (object reference)
+        if sketch_url:
+            sketch_image = await download_image(sketch_url)
+            reference_images.append(sketch_image)
+        
+        # Add global character if provided (human reference)
+        if global_character_url:
+            character_image = await download_image(global_character_url)
+            reference_images.append(character_image)
+        
+        # Add global setting if provided (object reference)
+        if global_setting_url:
+            setting_image = await download_image(global_setting_url)
+            reference_images.append(setting_image)
+        
+        # Add all reference images to contents
+        contents.extend(reference_images)
+        
+        # Generate image with Gemini 3 Pro Preview
+        response = client.models.generate_content(
+            model="gemini-3-pro-image-preview",
+            contents=contents,
+            config=types.GenerateContentConfig(
+                response_modalities=['TEXT', 'IMAGE'],
+                image_config=types.ImageConfig(
+                    aspect_ratio=aspect_ratio,
+                    image_size="2K",  # Fixed to 2K as per requirements
+                ),
+            ),
+        )
+        
+        # Extract generated image
+        for part in response.parts:
+            if part.inline_data is not None:
+                image = part.as_image()
+                
+                # Convert to bytes - save to temp file first, then read as bytes
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                    tmp_path = tmp_file.name
+                
+                try:
+                    # Save to file
                     image.save(tmp_path)
                     # Read the file back as bytes
                     with open(tmp_path, 'rb') as f:
