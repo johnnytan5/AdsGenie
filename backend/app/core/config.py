@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
     # AI Services - Google GenAI (used for both NanoBanana and VEO3)
     GOOGLE_API_KEY: Optional[str] = None
-
+    
     # AI Services - OpenAI (used for music type determination)
     OPENAI_API_KEY: Optional[str] = None
 
