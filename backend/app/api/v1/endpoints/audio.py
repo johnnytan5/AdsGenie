@@ -154,9 +154,12 @@ async def add_audio_to_full_video(
                 detail="tts_text is required when audio_type is 'text_to_speech' or 'both'",
             )
 
-    # Calculate total duration from scenes
-    scenes = project.get("scenes", [])
-    total_duration = sum(scene.get("duration", 5) for scene in scenes)
+    # Use provided duration or calculate from scenes
+    if request.duration:
+        total_duration = request.duration
+    else:
+        scenes = project.get("scenes", [])
+        total_duration = sum(scene.get("duration", 5) for scene in scenes)
 
     # Add background task
     background_tasks.add_task(
@@ -169,6 +172,9 @@ async def add_audio_to_full_video(
         duration=total_duration,
         tts_text=request.tts_text,
         voice_id=request.voice_id,
+        music_type=request.music_type,
+        mood=request.mood,
+        tempo=request.tempo,
     )
 
     return VideoAudioResponse(

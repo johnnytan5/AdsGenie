@@ -13,8 +13,9 @@ from app.services.audio import (
     generate_text_to_speech,
     determine_music_type,
 )
-from app.core.s3 import upload_file_to_s3, generate_s3_key
+from app.core.s3 import upload_file_to_s3, generate_s3_key, get_presigned_url_from_s3_url
 from app.core.webhook import send_webhook
+from app.services.video_audio_combiner import combine_video_and_audio
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +139,9 @@ async def add_audio_to_video_task(
     duration: int,
     tts_text: Optional[str] = None,
     voice_id: Optional[str] = None,
+    music_type: Optional[str] = None,
+    mood: Optional[str] = None,
+    tempo: Optional[str] = None,
 ) -> None:
     """
     Background task to add audio to a video.
@@ -161,8 +165,19 @@ async def add_audio_to_video_task(
             await send_webhook(project_id, f"video_audio_{scene_id or 'full'}", "failed")
             return
 
-        # Determine music type using OpenAI
-        music_info = await determine_music_type(video_description)
+        # Prepare music info - use provided parameters or determine via OpenAI
+        music_info = None
+        if music_type or mood or tempo:
+            # Use provided customization parameters
+            music_info = {
+                "music_type": music_type,
+                "mood": mood,
+                "tempo": tempo,
+                "description": video_description,
+            }
+        else:
+            # Determine music type using OpenAI if no customization provided
+            music_info = await determine_music_type(video_description)
 
         background_music_bytes = None
         tts_audio_bytes = None
@@ -216,30 +231,47 @@ async def add_audio_to_video_task(
             await send_webhook(project_id, f"video_audio_{scene_id or 'full'}", "failed")
             return
 
-        # Upload audio to S3
+        # Combine video and audio using FFmpeg
+        logger.info("Combining video and audio using FFmpeg...")
+        output_key = None
         if scene_id:
-            audio_key = generate_s3_key(project_id, "combined_audio", scene_id)
+            output_key = generate_s3_key(project_id, "video_with_audio", scene_id)
         else:
-            # For full project video, we'd need a different key structure
-            audio_key = f"projects/{project_id}/final_audio.mp3"
+            output_key = f"projects/{project_id}/final_video_with_audio.mp4"
 
-        audio_s3_url = upload_file_to_s3(
-            audio_bytes,
-            audio_key,
-            content_type="audio/mpeg"
+        video_with_audio_s3_url = await combine_video_and_audio(
+            video_s3_url=video_s3_url,
+            audio_bytes=audio_bytes,
+            project_id=project_id,
+            output_key=output_key
         )
-        logger.info(f"Audio uploaded to S3: {audio_s3_url}")
 
-        # Note: To actually add audio to video, you need FFmpeg
-        # This would involve:
-        # 1. Downloading video from S3
-        # 2. Using FFmpeg to combine video and audio
-        # 3. Uploading the result back to S3
-        # For now, we'll just store the audio separately
-        logger.warning("Video+audio combination requires FFmpeg integration. Audio stored separately.")
+        if not video_with_audio_s3_url:
+            logger.error("Failed to combine video and audio")
+            await send_webhook(project_id, f"video_audio_{scene_id or 'full'}", "failed")
+            return
 
-        # Send webhook notification
-        await send_webhook(project_id, f"video_audio_{scene_id or 'full'}", "done")
+        logger.info(f"Video with audio uploaded to S3: {video_with_audio_s3_url}")
+
+        # Get presigned URL for webhook
+        presigned_url = get_presigned_url_from_s3_url(video_with_audio_s3_url)
+
+        # Determine webhook task type based on audio type
+        task_type_suffix = ""
+        if audio_type == "background_music":
+            task_type_suffix = "_bgm"
+        elif audio_type == "text_to_speech":
+            task_type_suffix = "_tts"
+        else:
+            task_type_suffix = "_both"
+
+        # Send webhook notification with presigned URL
+        await send_webhook(
+            project_id,
+            f"video_audio_{scene_id or 'full'}{task_type_suffix}",
+            "done",
+            presigned_url=presigned_url
+        )
         logger.info(f"Audio added to video for {'scene ' + scene_id if scene_id else 'full project'}")
 
     except Exception as e:

@@ -287,9 +287,6 @@ async def generate_video_veo3(
         scene_image = pil_to_genai_image(scene_image_pil)
         
         # Build reference images list (up to 3)
-        # Note: When using reference images, we cannot also pass the image parameter
-        # The scene image will be used as the main image when no reference images,
-        # or we'll need to structure the request differently
         reference_images = []
         
         # Add global character if requested and available
@@ -314,14 +311,6 @@ async def generate_video_veo3(
                 )
             )
         
-        # When using reference images, include scene image as the first reference
-        # This ensures the scene image is used in the video generation
-        if len(reference_images) > 0:
-            reference_images.insert(0, types.VideoGenerationReferenceImage(
-                image=scene_image,
-                reference_type="asset"
-            ))
-        
         # Build prompt
         video_prompt = prompt or "Create a cinematic video based on this scene."
         if voiceover_text:
@@ -336,85 +325,49 @@ async def generate_video_veo3(
             duration = 6
             print(f"[VIDEO GENERATION] Duration {original_duration} not valid for Veo 3.1, defaulting to 6 seconds. Valid values: {valid_durations}")
         
-        # Determine which model to use based on whether we have reference images
-        # veo-3.1-fast-generate-preview: Faster, cheaper, but doesn't support reference images
-        # veo-3.1-generate-preview: Supports reference images, but slower and more expensive
-        use_reference_images = len(reference_images) > 0
-        model_name = "veo-3.1-generate-preview" if use_reference_images else "veo-3.1-fast-generate-preview"
-        
         # Prepare config with reference images, duration, and aspect ratio
         config_kwargs = {}
-        
         if reference_images:
-            # When using reference images, only include reference_images in config
-            # The API doesn't support duration/aspect_ratio with reference images
             config_kwargs["reference_images"] = reference_images
-            print(f"[VIDEO GENERATION] Using reference images only (no duration/aspect_ratio in config)")
-        else:
-            # When not using reference images, we can set duration and aspect ratio
-            config_kwargs["duration_seconds"] = duration
-            
-            # Add aspect ratio to config (Veo 3.1 supports "16:9" or "9:16")
-            # Convert project aspect ratio to Veo format if needed
-            veo_aspect_ratio = aspect_ratio
-            if aspect_ratio not in ["16:9", "9:16"]:
-                # Map common aspect ratios to Veo-supported ones
-                # Default to 16:9 for landscape, 9:16 for portrait
-                if "16" in aspect_ratio or "9" in aspect_ratio:
-                    # If it's a landscape ratio (width > height), use 16:9
-                    # If it's a portrait ratio (height > width), use 9:16
-                    # For simplicity, default to 16:9 if unclear
-                    veo_aspect_ratio = "16:9"
-                else:
-                    veo_aspect_ratio = "16:9"  # Default fallback
-            
-            config_kwargs["aspect_ratio"] = veo_aspect_ratio
-            print(f"[VIDEO GENERATION] Using aspect ratio: {veo_aspect_ratio} (from project: {aspect_ratio})")
         
-        # Create config
-        config = types.GenerateVideosConfig(**config_kwargs) if config_kwargs else None
+        # Add duration to config (Veo 3.1 supports 4, 6, or 8 seconds)
+        # Note: When using reference images, duration may be fixed at 8 seconds, but we'll try to set it
+        config_kwargs["duration_seconds"] = duration
+        
+        # Add aspect ratio to config (Veo 3.1 supports "16:9" or "9:16")
+        # Convert project aspect ratio to Veo format if needed
+        veo_aspect_ratio = aspect_ratio
+        if aspect_ratio not in ["16:9", "9:16"]:
+            # Map common aspect ratios to Veo-supported ones
+            # Default to 16:9 for landscape, 9:16 for portrait
+            if "16" in aspect_ratio or "9" in aspect_ratio:
+                # If it's a landscape ratio (width > height), use 16:9
+                # If it's a portrait ratio (height > width), use 9:16
+                # For simplicity, default to 16:9 if unclear
+                veo_aspect_ratio = "16:9"
+            else:
+                veo_aspect_ratio = "16:9"  # Default fallback
+        
+        config_kwargs["aspect_ratio"] = veo_aspect_ratio
+        print(f"[VIDEO GENERATION] Using aspect ratio: {veo_aspect_ratio} (from project: {aspect_ratio})")
+        
+        # Always create config (even if no reference images, we still want to set duration and aspect ratio)
+        config = types.GenerateVideosConfig(**config_kwargs)
         
         # Generate video (this is an async operation)
         # Scene image is passed as the main image parameter
         # Global character/setting are passed as reference images in config
-        print(f"[VIDEO GENERATION] Starting video generation with model: {model_name}")
+        print(f"[VIDEO GENERATION] Starting video generation with model: veo-3.1-fast-generate-preview")
         print(f"[VIDEO GENERATION] Prompt: {video_prompt[:100]}...")
         print(f"[VIDEO GENERATION] Duration: {duration} seconds")
         print(f"[VIDEO GENERATION] Reference images count: {len(reference_images)}")
-        if use_reference_images:
-            print(f"[VIDEO GENERATION] Using veo-3.1-generate-preview (supports reference images)")
-        else:
-            print(f"[VIDEO GENERATION] Using veo-3.1-fast-generate-preview (faster, no reference images)")
         
-        # When using reference images, don't pass the image parameter
-        # The scene image is included as the first reference image
-        if use_reference_images:
-            if config:
-                operation = client.models.generate_videos(
-                    model=model_name,
-                    prompt=video_prompt,
-                    config=config,
-                )
-            else:
-                operation = client.models.generate_videos(
-                    model=model_name,
-                    prompt=video_prompt,
-                )
-        else:
-            # When not using reference images, pass the scene image as the main image
-            if config:
-                operation = client.models.generate_videos(
-                    model=model_name,
-                    prompt=video_prompt,
-                    image=scene_image,
-                    config=config,
-                )
-            else:
-                operation = client.models.generate_videos(
-                    model=model_name,
-                    prompt=video_prompt,
-                    image=scene_image,
-                )
+        operation = client.models.generate_videos(
+            model="veo-3.1-fast-generate-preview",  # Using faster and cheaper model
+            prompt=video_prompt,
+            image=scene_image,
+            config=config,
+        )
         
         print(f"[VIDEO GENERATION] Operation created: {operation.name}")
         print(f"[VIDEO GENERATION] Starting to poll operation status every 10 seconds...")

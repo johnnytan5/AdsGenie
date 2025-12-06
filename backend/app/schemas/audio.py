@@ -57,6 +57,12 @@ class VideoAudioRequest(BaseModel):
         min_length=1,
         description="Description of the video to base audio generation on"
     )
+    duration: Optional[int] = Field(
+        None,
+        ge=1,
+        le=300,
+        description="Duration of the video in seconds (if not provided, will be calculated from scenes)"
+    )
     tts_text: Optional[str] = Field(
         None,
         description="Text for text-to-speech (required if audio_type is 'text_to_speech' or 'both')"
@@ -64,6 +70,19 @@ class VideoAudioRequest(BaseModel):
     voice_id: Optional[str] = Field(
         None,
         description="Optional ElevenLabs voice ID for TTS"
+    )
+    # Music customization options
+    music_type: Optional[str] = Field(
+        None,
+        description="Music type/style (e.g., 'happy', 'sad', 'energetic', 'calm', 'dramatic', 'romantic', 'party', 'mysterious', 'inspiring', 'upbeat', 'ambient')"
+    )
+    mood: Optional[str] = Field(
+        None,
+        description="Mood description (e.g., 'uplifting', 'melancholic', 'intense', 'peaceful', 'playful', 'serious')"
+    )
+    tempo: Optional[str] = Field(
+        None,
+        description="Tempo (e.g., 'slow', 'medium', 'fast')"
     )
 
 
