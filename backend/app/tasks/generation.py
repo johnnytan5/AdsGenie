@@ -13,7 +13,7 @@ from app.crud.project import (
     update_global_setting_s3_urls,
 )
 from app.services.ai import generate_image_nanobanana, generate_image_gemini3_pro, generate_video_veo3
-from app.core.s3 import upload_file_to_s3, generate_s3_key
+from app.core.s3 import upload_file_to_s3, generate_s3_key, get_presigned_url_from_s3_url
 from app.core.webhook import send_webhook
 
 
@@ -294,12 +294,16 @@ async def generate_scene_video_task(
         image_s3_url: Scene image S3 URL (required)
         aspect_ratio: Video aspect ratio
         voiceover_text: Optional voiceover text
-        duration: Video duration
+        duration: Video duration (4, 6, or 8 seconds for Veo 3.1)
         use_global_character: Whether to use global character as reference
         use_global_setting: Whether to use global setting as reference
     """
     # Update status to processing
     update_scene_status(project_id, scene_id, "processing")
+    
+    print(f"[BACKGROUND TASK] Starting scene video generation for project {project_id}, scene {scene_id}")
+    print(f"[BACKGROUND TASK] Duration: {duration} seconds")
+    print(f"[BACKGROUND TASK] Use global character: {use_global_character}, Use global setting: {use_global_setting}")
 
     try:
         # Get project to access global settings
@@ -326,6 +330,7 @@ async def generate_scene_video_task(
         scene_description = scene.get("description", "Create a cinematic video based on this scene.") if scene else "Create a cinematic video based on this scene."
 
         # Generate video using VEO3
+        print(f"[BACKGROUND TASK] Generating video with duration: {duration} seconds")
         result = await generate_video_veo3(
             scene_image_url=image_s3_url,
             aspect_ratio=aspect_ratio,
@@ -335,19 +340,32 @@ async def generate_scene_video_task(
             global_character_url=global_character_url,
             global_setting_url=global_setting_url,
             prompt=scene_description,
+            duration=duration,
         )
 
         if result.get("success") and result.get("video_bytes"):
+            print(f"[BACKGROUND TASK] Video generated successfully, uploading to S3...")
             # Upload generated video directly to S3
             video_bytes = result["video_bytes"]
             s3_key = generate_s3_key(project_id, "generated_video", scene_id)
             s3_url = upload_file_to_s3(video_bytes, s3_key, content_type="video/mp4")
+            print(f"[BACKGROUND TASK] Video uploaded to S3: {s3_url}")
+
+            # Get presigned URL for frontend access
+            presigned_url = get_presigned_url_from_s3_url(s3_url)
+            print(f"[BACKGROUND TASK] Generated presigned URL: {presigned_url}")
 
             # Update scene with generated video URL
             update_scene_generated_video(project_id, scene_id, s3_url)
+            print(f"[BACKGROUND TASK] Updated DynamoDB with video URL")
             
-            # Send webhook notification
-            await send_webhook(project_id, f"scene_video_{scene_id}", "done")
+            # Send webhook notification with presigned URL
+            print(f"[BACKGROUND TASK] Sending webhook notification with presigned URL...")
+            webhook_sent = await send_webhook(project_id, f"scene_video_{scene_id}", "done", presigned_url=presigned_url)
+            if webhook_sent:
+                print(f"[BACKGROUND TASK] Scene video generation completed successfully")
+            else:
+                print(f"[BACKGROUND TASK] Scene video generation completed but webhook failed")
         else:
             error_msg = result.get("error", "Unknown error")
             update_scene_status(project_id, scene_id, "failed")

@@ -24,6 +24,8 @@ class SceneUpdate(BaseModel):
     background_music_enabled: Optional[bool] = None
     use_global_character_for_image: Optional[bool] = None
     use_global_setting_for_image: Optional[bool] = None
+    use_global_character_for_video: Optional[bool] = None
+    use_global_setting_for_video: Optional[bool] = None
 
 
 class SceneResponse(BaseModel):
@@ -44,6 +46,8 @@ class SceneResponse(BaseModel):
     background_music_enabled: Optional[bool] = False
     use_global_character_for_image: Optional[bool] = False
     use_global_setting_for_image: Optional[bool] = False
+    use_global_character_for_video: Optional[bool] = False
+    use_global_setting_for_video: Optional[bool] = False
 
     class Config:
         from_attributes = True

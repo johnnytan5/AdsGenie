@@ -245,6 +245,7 @@ async def generate_video_veo3(
     global_character_url: Optional[str] = None,
     global_setting_url: Optional[str] = None,
     prompt: Optional[str] = None,
+    duration: int = 8,
 ) -> Dict[str, Any]:
     """
     Generate video using VEO 3.1 with reference images.
@@ -258,6 +259,8 @@ async def generate_video_veo3(
         global_character_url: Optional global character image URL
         global_setting_url: Optional global setting image URL
         prompt: Optional custom prompt (if not provided, will use scene description)
+        duration: Video duration in seconds (4, 6, or 8 for Veo 3.1). Default is 8.
+                  Note: When using reference images, duration may be fixed at 8 seconds.
     
     Returns:
         Dictionary with generated video bytes or error
@@ -296,18 +299,32 @@ async def generate_video_veo3(
         if voiceover_text:
             video_prompt += f" Include dialogue: {voiceover_text}"
         
-        # Prepare config with reference images if available
-        config = None
+        # Validate and normalize duration for Veo 3.1 (must be 4, 6, or 8 seconds)
+        # Note: When using reference images, duration may be fixed at 8 seconds
+        valid_durations = [4, 6, 8]
+        original_duration = duration
+        if duration not in valid_durations:
+            # Default to 6 seconds if duration is not valid
+            duration = 6
+            print(f"[VIDEO GENERATION] Duration {original_duration} not valid for Veo 3.1, defaulting to 6 seconds. Valid values: {valid_durations}")
+        
+        # Prepare config with reference images and duration
+        config_kwargs = {}
         if reference_images:
-            config = types.GenerateVideosConfig(
-                reference_images=reference_images
-            )
+            config_kwargs["reference_images"] = reference_images
+        
+        # Add duration to config (Veo 3.1 supports 4, 6, or 8 seconds)
+        # Note: When using reference images, duration may be fixed at 8 seconds, but we'll try to set it
+        config_kwargs["duration_seconds"] = duration
+        
+        # Always create config (even if no reference images, we still want to set duration)
+        config = types.GenerateVideosConfig(**config_kwargs)
         
         # Generate video (this is an async operation)
         # Scene image is passed as the main image parameter
         # Global character/setting are passed as reference images in config
         operation = client.models.generate_videos(
-            model="veo-3.1-generate-preview",
+            model="veo-3.1-fast-generate-preview",  # Using faster and cheaper model
             prompt=video_prompt,
             image=scene_image,
             config=config,

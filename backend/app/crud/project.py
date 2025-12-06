@@ -401,6 +401,8 @@ def add_scene(project_id: str, scene_data: SceneCreate, sketch_s3_url: Optional[
         "background_music_enabled": False,
         "use_global_character_for_image": False,
         "use_global_setting_for_image": False,
+        "use_global_character_for_video": False,
+        "use_global_setting_for_video": False,
     }
 
     scenes.append(new_scene)
@@ -455,6 +457,12 @@ def update_scene(
         scene["use_global_character_for_image"] = scene_data.use_global_character_for_image
     if scene_data.use_global_setting_for_image is not None:
         scene["use_global_setting_for_image"] = scene_data.use_global_setting_for_image
+    
+    # Update video generation settings
+    if scene_data.use_global_character_for_video is not None:
+        scene["use_global_character_for_video"] = scene_data.use_global_character_for_video
+    if scene_data.use_global_setting_for_video is not None:
+        scene["use_global_setting_for_video"] = scene_data.use_global_setting_for_video
     
     # Update audio fields
     if scene_data.voiceover_enabled is not None:

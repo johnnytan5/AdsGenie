@@ -119,6 +119,7 @@ async def generate_scene_video(
             detail="Scene not found",
         )
 
+    # Validate that scene has a generated image
     if not scene.get("generated_image_s3_url"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -134,6 +135,12 @@ async def generate_scene_video(
             detail="Scene must have a valid description (not empty or 'New Scene') to generate a video",
         )
 
+    # Get toggle values from scene (not from request)
+    use_global_character = scene.get("use_global_character_for_video", False)
+    use_global_setting = scene.get("use_global_setting_for_video", False)
+    
+    print(f"[GENERATION ENDPOINT] Scene video generation - Use global character: {use_global_character}, Use global setting: {use_global_setting}")
+
     # Add background task
     background_tasks.add_task(
         generate_scene_video_task,
@@ -142,9 +149,9 @@ async def generate_scene_video(
         image_s3_url=scene["generated_image_s3_url"],
         aspect_ratio=request.aspect_ratio,
         voiceover_text=request.voiceover_text,
-        duration=scene.get("duration", 5),
-        use_global_character=request.use_global_character,
-        use_global_setting=request.use_global_setting,
+        duration=scene.get("duration", 8),  # Default to 8 seconds (valid Veo 3.1 duration)
+        use_global_character=use_global_character,
+        use_global_setting=use_global_setting,
     )
 
     return VideoGenerationResponse(

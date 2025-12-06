@@ -76,6 +76,10 @@ async def add_scene(
             new_scene["use_global_character_for_image"] = False
         if "use_global_setting_for_image" not in new_scene:
             new_scene["use_global_setting_for_image"] = False
+        if "use_global_character_for_video" not in new_scene:
+            new_scene["use_global_character_for_video"] = False
+        if "use_global_setting_for_video" not in new_scene:
+            new_scene["use_global_setting_for_video"] = False
 
     return new_scene
 
@@ -94,6 +98,8 @@ async def update_scene(
     background_music_enabled: Optional[bool] = Form(None),
     use_global_character_for_image: Optional[bool] = Form(None),
     use_global_setting_for_image: Optional[bool] = Form(None),
+    use_global_character_for_video: Optional[bool] = Form(None),
+    use_global_setting_for_video: Optional[bool] = Form(None),
 ):
     """Update a scene."""
     project = crud_project.get_project(project_id)
@@ -140,6 +146,20 @@ async def update_scene(
             use_global_setting_for_image_bool = use_global_setting_for_image.lower() in ('true', '1', 'yes', 'on')
         else:
             use_global_setting_for_image_bool = bool(use_global_setting_for_image)
+    
+    use_global_character_for_video_bool = None
+    if use_global_character_for_video is not None:
+        if isinstance(use_global_character_for_video, str):
+            use_global_character_for_video_bool = use_global_character_for_video.lower() in ('true', '1', 'yes', 'on')
+        else:
+            use_global_character_for_video_bool = bool(use_global_character_for_video)
+    
+    use_global_setting_for_video_bool = None
+    if use_global_setting_for_video is not None:
+        if isinstance(use_global_setting_for_video, str):
+            use_global_setting_for_video_bool = use_global_setting_for_video.lower() in ('true', '1', 'yes', 'on')
+        else:
+            use_global_setting_for_video_bool = bool(use_global_setting_for_video)
 
     scene_data = SceneUpdate(
         description=description,
@@ -151,6 +171,8 @@ async def update_scene(
         background_music_enabled=background_music_enabled_bool,
         use_global_character_for_image=use_global_character_for_image_bool,
         use_global_setting_for_image=use_global_setting_for_image_bool,
+        use_global_character_for_video=use_global_character_for_video_bool,
+        use_global_setting_for_video=use_global_setting_for_video_bool,
     )
 
     # Upload sketch if provided
@@ -194,6 +216,10 @@ async def update_scene(
         updated_scene["use_global_character_for_image"] = False
     if "use_global_setting_for_image" not in updated_scene:
         updated_scene["use_global_setting_for_image"] = False
+    if "use_global_character_for_video" not in updated_scene:
+        updated_scene["use_global_character_for_video"] = False
+    if "use_global_setting_for_video" not in updated_scene:
+        updated_scene["use_global_setting_for_video"] = False
 
     return updated_scene
 
