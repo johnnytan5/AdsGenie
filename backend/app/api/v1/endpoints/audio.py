@@ -8,6 +8,7 @@ from app.schemas.audio import (
     AudioGenerationResponse,
     VideoAudioRequest,
     VideoAudioResponse,
+    AddAudioToVideoRequest,
 )
 from app.crud import project as crud_project
 from app.tasks.audio import (

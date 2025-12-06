@@ -33,6 +33,9 @@ from app.schemas.audio import (
     AudioGenerationResponse,
     VideoAudioRequest,
     VideoAudioResponse,
+    BGMGenerationRequest,
+    BGMGenerationResponse,
+    AddAudioToVideoRequest,
 )
 
 __all__ = [
@@ -59,4 +62,7 @@ __all__ = [
     "AudioGenerationResponse",
     "VideoAudioRequest",
     "VideoAudioResponse",
+    "BGMGenerationRequest",
+    "BGMGenerationResponse",
+    "AddAudioToVideoRequest",
 ]

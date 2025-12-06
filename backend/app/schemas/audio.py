@@ -94,3 +94,52 @@ class VideoAudioResponse(BaseModel):
     video_with_audio_s3_url: Optional[str] = None
     status: str = Field(..., pattern="^(processing|done|failed)$")
 
+
+class BGMGenerationRequest(BaseModel):
+    """Schema for generating BGM audio only (without combining with video)."""
+    
+    video_description: str = Field(
+        ...,
+        min_length=1,
+        description="Description of the video to base music generation on"
+    )
+    duration: int = Field(
+        ...,
+        ge=1,
+        le=300,
+        description="Duration of the audio in seconds"
+    )
+    music_type: Optional[str] = Field(
+        None,
+        description="Music type/style (e.g., 'happy', 'sad', 'energetic', 'calm', 'dramatic', 'romantic', 'party', 'mysterious', 'inspiring', 'upbeat', 'ambient')"
+    )
+    mood: Optional[str] = Field(
+        None,
+        description="Mood description (e.g., 'uplifting', 'melancholic', 'intense', 'peaceful', 'playful', 'serious')"
+    )
+    tempo: Optional[str] = Field(
+        None,
+        description="Tempo (e.g., 'slow', 'medium', 'fast')"
+    )
+
+
+class BGMGenerationResponse(BaseModel):
+    """Schema for BGM generation response."""
+    
+    project_id: str
+    bgm_audio_s3_url: Optional[str] = None
+    status: str = Field(..., pattern="^(processing|done|failed)$")
+
+
+class AddAudioToVideoRequest(BaseModel):
+    """Schema for adding generated audio to video."""
+    
+    audio_s3_url: str = Field(
+        ...,
+        description="S3 URL of the generated audio file"
+    )
+    audio_mode: Literal["overlay", "overwrite"] = Field(
+        ...,
+        description="Audio mode: 'overlay' to mix with existing audio, 'overwrite' to replace existing audio"
+    )
+
