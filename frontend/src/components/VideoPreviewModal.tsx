@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { Button } from './ui/Button';
 import { X, Download, ArrowLeft, Music } from 'lucide-react';
 
@@ -7,7 +8,6 @@ interface VideoPreviewModalProps {
   videoUrl: string | null;
   isOpen: boolean;
   onClose: () => void;
-  onSave: () => void;
   onExport: () => void;
   onBackToEditing: () => void;
   projectId?: string;
@@ -17,10 +17,12 @@ export const VideoPreviewModal: React.FC<VideoPreviewModalProps> = ({
   videoUrl,
   isOpen,
   onClose,
-  onSave,
   onExport,
   onBackToEditing,
+  projectId,
 }) => {
+  const router = useRouter();
+  
   if (!isOpen || !videoUrl) return null;
 
   const handleExport = () => {
@@ -32,6 +34,13 @@ export const VideoPreviewModal: React.FC<VideoPreviewModalProps> = ({
     link.click();
     document.body.removeChild(link);
     onExport();
+  };
+
+  const handleAudioEnhancement = () => {
+    if (projectId) {
+      router.push(`/audio?projectId=${projectId}`);
+      onClose();
+    }
   };
 
   return (
@@ -74,10 +83,11 @@ export const VideoPreviewModal: React.FC<VideoPreviewModalProps> = ({
           <div className="flex gap-3">
             <Button
               variant="outline"
-              onClick={onSave}
+              onClick={handleAudioEnhancement}
+              disabled={!projectId}
             >
-              <Save className="w-4 h-4 mr-2" />
-              Save Project
+              <Music className="w-4 h-4 mr-2" />
+              Audio Enhancement
             </Button>
             <Button
               variant="primary"

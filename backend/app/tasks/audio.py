@@ -130,6 +130,145 @@ async def generate_audio_task(
         await send_webhook(project_id, f"audio_{scene_id}", "failed")
 
 
+async def generate_bgm_only_task(
+    project_id: str,
+    video_description: str,
+    duration: int,
+    music_type: Optional[str] = None,
+    mood: Optional[str] = None,
+    tempo: Optional[str] = None,
+) -> None:
+    """
+    Background task to generate BGM audio only (without combining with video).
+    
+    Args:
+        project_id: Project ID
+        video_description: Description of the video
+        duration: Duration in seconds
+        music_type: Optional music type
+        mood: Optional mood
+        tempo: Optional tempo
+    """
+    logger.info(f"[BACKGROUND TASK] Starting BGM generation for project {project_id}")
+    
+    try:
+        project = get_project(project_id)
+        if not project:
+            logger.error(f"Project {project_id} not found")
+            await send_webhook(project_id, "bgm_generation", "failed")
+            return
+
+        # Prepare music info - use provided parameters or determine via OpenAI
+        music_info = None
+        if music_type or mood or tempo:
+            music_info = {
+                "music_type": music_type,
+                "mood": mood,
+                "tempo": tempo,
+                "description": video_description,
+            }
+        else:
+            music_info = await determine_music_type(video_description)
+
+        # Generate background music
+        logger.info("Generating background music")
+        background_music_bytes = await generate_background_music(
+            video_description=video_description,
+            duration=duration,
+            music_info=music_info
+        )
+
+        if not background_music_bytes:
+            logger.error("BGM generation failed")
+            await send_webhook(project_id, "bgm_generation", "failed")
+            return
+
+        # Upload BGM to S3
+        bgm_key = f"projects/{project_id}/bgm_audio.mp3"
+        bgm_s3_url = upload_file_to_s3(
+            background_music_bytes,
+            bgm_key,
+            content_type="audio/mpeg"
+        )
+        logger.info(f"BGM uploaded to S3: {bgm_s3_url}")
+
+        # Get presigned URL for webhook
+        presigned_url = get_presigned_url_from_s3_url(bgm_s3_url)
+
+        # Send webhook notification with presigned URL
+        await send_webhook(
+            project_id,
+            "bgm_generation",
+            "done",
+            presigned_url=presigned_url
+        )
+        logger.info(f"BGM generation completed for project {project_id}")
+
+    except Exception as e:
+        logger.error(f"Error generating BGM: {str(e)}")
+        await send_webhook(project_id, "bgm_generation", "failed")
+
+
+async def generate_tts_only_task(
+    project_id: str,
+    tts_text: str,
+    voice_id: Optional[str] = None,
+) -> None:
+    """
+    Background task to generate TTS audio only (without combining with video).
+    
+    Args:
+        project_id: Project ID
+        tts_text: Text to convert to speech
+        voice_id: Optional voice ID for TTS
+    """
+    logger.info(f"[BACKGROUND TASK] Starting TTS generation for project {project_id}")
+    
+    try:
+        project = get_project(project_id)
+        if not project:
+            logger.error(f"Project {project_id} not found")
+            await send_webhook(project_id, "tts_generation", "failed")
+            return
+
+        # Generate TTS audio
+        logger.info("Generating TTS audio")
+        tts_audio_bytes = await generate_text_to_speech(
+            text=tts_text,
+            voice_id=voice_id
+        )
+
+        if not tts_audio_bytes:
+            logger.error("TTS generation failed")
+            await send_webhook(project_id, "tts_generation", "failed")
+            return
+
+        # Upload TTS to S3
+        tts_key = f"projects/{project_id}/tts_audio.mp3"
+        tts_s3_url = upload_file_to_s3(
+            tts_audio_bytes,
+            tts_key,
+            content_type="audio/mpeg"
+        )
+        logger.info(f"TTS uploaded to S3: {tts_s3_url}")
+
+        # Get presigned URL for webhook
+        presigned_url = get_presigned_url_from_s3_url(tts_s3_url)
+
+        # Send webhook notification with presigned URL
+        await send_webhook(
+            project_id,
+            "tts_generation",
+            "done",
+            presigned_url=presigned_url
+        )
+        logger.info(f"TTS generation completed for project {project_id}")
+
+    except Exception as e:
+        logger.error(f"Error generating TTS: {str(e)}")
+        await send_webhook(project_id, "tts_generation", "failed")
+
+
 async def add_audio_to_video_task(
     project_id: str,
     scene_id: Optional[str],
@@ -155,6 +294,9 @@ async def add_audio_to_video_task(
         duration: Duration in seconds
         tts_text: Text for text-to-speech (required if audio_type includes TTS)
         voice_id: Optional voice ID for TTS
+        music_type: Optional music type
+        mood: Optional mood
+        tempo: Optional tempo
     """
     logger.info(f"[BACKGROUND TASK] Adding audio to video for {'scene ' + scene_id if scene_id else 'full project'}")
 
@@ -278,3 +420,141 @@ async def add_audio_to_video_task(
         logger.error(f"Error adding audio to video: {str(e)}")
         await send_webhook(project_id, f"video_audio_{scene_id or 'full'}", "failed")
 
+
+async def add_bgm_to_video_task(
+    project_id: str,
+    audio_s3_url: str,
+    audio_mode: str,
+) -> None:
+    """
+    Background task to add existing BGM audio to video with overlay or overwrite mode.
+    
+    Args:
+        project_id: Project ID
+        audio_s3_url: S3 URL of the generated BGM audio
+        audio_mode: "overlay" to mix with existing audio, "overwrite" to replace
+    """
+    logger.info(f"[BACKGROUND TASK] Adding BGM to video (mode: {audio_mode})")
+
+    try:
+        project = get_project(project_id)
+        if not project:
+            logger.error(f"Project {project_id} not found")
+            await send_webhook(project_id, "add_bgm_to_video", "failed")
+            return
+
+        if not project.get("final_video_s3_url"):
+            logger.error("Project must have a final video")
+            await send_webhook(project_id, "add_bgm_to_video", "failed")
+            return
+
+        # Download audio from S3
+        from app.core.s3 import download_file_from_s3, extract_s3_key_from_url
+        audio_s3_key = extract_s3_key_from_url(audio_s3_url)
+        if not audio_s3_key:
+            logger.error("Failed to extract S3 key from audio URL")
+            await send_webhook(project_id, "add_bgm_to_video", "failed")
+            return
+
+        audio_bytes = download_file_from_s3(audio_s3_key)
+        if not audio_bytes:
+            logger.error("Failed to download audio from S3")
+            await send_webhook(project_id, "add_bgm_to_video", "failed")
+            return
+
+        # Combine video and audio with specified mode (overlay or overwrite)
+        output_key = f"projects/{project_id}/final_video_with_audio.mp4"
+        video_with_audio_s3_url = await combine_video_and_audio(
+            video_s3_url=project["final_video_s3_url"],
+            audio_bytes=audio_bytes,
+            project_id=project_id,
+            output_key=output_key,
+            audio_mode=audio_mode
+        )
+
+        if not video_with_audio_s3_url:
+            logger.error("Failed to combine video and audio")
+            await send_webhook(project_id, "add_bgm_to_video", "failed")
+            return
+
+        logger.info(f"Video with BGM uploaded to S3: {video_with_audio_s3_url}")
+
+        # Get presigned URL for webhook
+        presigned_url = get_presigned_url_from_s3_url(video_with_audio_s3_url)
+
+        # Send webhook notification
+        await send_webhook(
+            project_id,
+            "add_bgm_to_video",
+            "done",
+            presigned_url=presigned_url
+        )
+        logger.info(f"BGM added to video for project {project_id}")
+
+    except Exception as e:
+        logger.error(f"Error adding BGM to video: {str(e)}")
+        await send_webhook(project_id, "add_bgm_to_video", "failed")
+
+
+async def add_tts_to_video_task(
+    project_id: str,
+    audio_s3_url: str,
+    audio_mode: str = "overwrite",
+) -> None:
+    """
+    Background task to add generated TTS audio to video with overlay or overwrite mode.
+    
+    Args:
+        project_id: Project ID
+        audio_s3_url: S3 URL of the generated TTS audio file
+        audio_mode: "overlay" to mix with existing audio, "overwrite" to replace existing audio
+    """
+    logger.info(f"[BACKGROUND TASK] Adding TTS audio to video for project {project_id}")
+    
+    try:
+        project = get_project(project_id)
+        if not project:
+            logger.error(f"Project {project_id} not found")
+            await send_webhook(project_id, "add_tts_to_video", "failed")
+            return
+
+        final_video_s3_url = project.get("final_video_s3_url")
+        if not final_video_s3_url:
+            logger.error(f"Project {project_id} does not have a final video")
+            await send_webhook(project_id, "add_tts_to_video", "failed")
+            return
+
+        # Combine video and audio using FFmpeg
+        logger.info(f"Combining TTS audio with video (mode: {audio_mode})...")
+        output_key = f"projects/{project_id}/final_video_with_audio.mp4"
+        
+        video_with_audio_s3_url = await combine_video_and_audio(
+            video_s3_url=final_video_s3_url,
+            project_id=project_id,
+            output_key=output_key,
+            audio_mode=audio_mode,
+            audio_s3_url=audio_s3_url,  # Pass S3 URL instead of bytes
+        )
+
+        if not video_with_audio_s3_url:
+            logger.error("Failed to combine TTS audio with video")
+            await send_webhook(project_id, "add_tts_to_video", "failed")
+            return
+
+        logger.info(f"Video with TTS audio uploaded to S3: {video_with_audio_s3_url}")
+
+        # Get presigned URL for webhook
+        presigned_url = get_presigned_url_from_s3_url(video_with_audio_s3_url)
+
+        # Send webhook notification with presigned URL
+        await send_webhook(
+            project_id,
+            "add_tts_to_video",
+            "done",
+            presigned_url=presigned_url
+        )
+        logger.info(f"TTS audio added to video for project {project_id}")
+
+    except Exception as e:
+        logger.error(f"Error adding TTS to video: {str(e)}")
+        await send_webhook(project_id, "add_tts_to_video", "failed")

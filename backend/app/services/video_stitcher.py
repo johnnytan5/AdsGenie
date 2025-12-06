@@ -50,12 +50,21 @@ async def stitch_videos_with_transitions(
                 print(f"[VIDEO STITCHER] Failed to extract S3 key from URL: {video_url}")
                 continue
             
-            video_bytes = download_file_from_s3(s3_key)
-            temp_video_path = os.path.join(temp_dir, f"video_{i}.mp4")
-            with open(temp_video_path, 'wb') as f:
-                f.write(video_bytes)
-            temp_video_files.append(temp_video_path)
-            print(f"[VIDEO STITCHER] Downloaded video {i+1}/{len(video_s3_urls)}")
+            try:
+                video_bytes = download_file_from_s3(s3_key)
+                if not video_bytes:
+                    print(f"[VIDEO STITCHER] Failed to download video from S3: {s3_key}")
+                    continue
+                
+                temp_video_path = os.path.join(temp_dir, f"video_{i}.mp4")
+                with open(temp_video_path, 'wb') as f:
+                    f.write(video_bytes)
+                temp_video_files.append(temp_video_path)
+                print(f"[VIDEO STITCHER] Downloaded video {i+1}/{len(video_s3_urls)}: {s3_key}")
+            except Exception as e:
+                print(f"[VIDEO STITCHER] Error downloading video {i+1} from S3 key {s3_key}: {e}")
+                # Continue with other videos instead of failing completely
+                continue
         
         if len(temp_video_files) < 2:
             print(f"[VIDEO STITCHER] Need at least 2 videos, got {len(temp_video_files)}")

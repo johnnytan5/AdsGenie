@@ -13,7 +13,7 @@ from app.crud.project import (
     update_global_setting_s3_urls,
 )
 from app.services.ai import generate_image_nanobanana, generate_image_gemini3_pro, generate_video_veo3
-from app.core.s3 import upload_file_to_s3, generate_s3_key, get_presigned_url_from_s3_url
+from app.core.s3 import upload_file_to_s3, generate_s3_key, get_presigned_url_from_s3_url, delete_file_from_s3, extract_s3_key_from_url
 from app.core.webhook import send_webhook
 
 
@@ -400,6 +400,31 @@ async def generate_full_video_task(
         if not project:
             return
 
+        # Delete existing final video if it exists
+        existing_final_video_url = project.get("final_video_s3_url")
+        if existing_final_video_url:
+            print(f"[GENERATION] Found existing final video: {existing_final_video_url}")
+            
+            # Only delete if it's actually a final video (not a scene video from old placeholder)
+            # Check if the URL contains "final_video" in the path
+            s3_key = extract_s3_key_from_url(existing_final_video_url)
+            if s3_key and "final_video" in s3_key:
+                print(f"[GENERATION] Deleting existing final video from S3: {s3_key}")
+                try:
+                    delete_file_from_s3(s3_key)
+                    print(f"[GENERATION] Successfully deleted final video from S3")
+                except Exception as e:
+                    print(f"[GENERATION] Error deleting final video from S3: {e}")
+            else:
+                print(f"[GENERATION] Existing video URL is not a final video (likely old placeholder), skipping S3 deletion")
+            
+            # Always clear final video URL from DynamoDB (even if it was a placeholder)
+            update_final_video(project_id, "")
+            print(f"[GENERATION] Cleared final video URL from DynamoDB")
+            
+            # Send "cleared" webhook to notify frontend
+            await send_webhook(project_id, "final_video", "cleared")
+
         scenes = project.get("scenes", [])
         if not scenes:
             return
@@ -418,11 +443,14 @@ async def generate_full_video_task(
                 )
 
         # Generate videos for scenes that don't have them
+        print(f"[GENERATION] Checking scene videos for {len(scenes)} scenes...")
         for scene in scenes:
+            scene_id = scene["scene_id"]
             if not scene.get("generated_video_s3_url") and scene.get("generated_image_s3_url"):
+                print(f"[GENERATION] Generating video for scene {scene_id}...")
                 await generate_scene_video_task(
                     project_id=project_id,
-                    scene_id=scene["scene_id"],
+                    scene_id=scene_id,
                     image_s3_url=scene["generated_image_s3_url"],
                     aspect_ratio=aspect_ratio,
                     voiceover_text=None,
@@ -430,19 +458,56 @@ async def generate_full_video_task(
                     use_global_character=True,
                     use_global_setting=True,
                 )
+                # Refresh scene data after generation
+                project = get_project(project_id)
+                if project:
+                    scenes = project.get("scenes", [])
+                    scene = next((s for s in scenes if s["scene_id"] == scene_id), None)
+            elif not scene.get("generated_video_s3_url"):
+                print(f"[GENERATION] Scene {scene_id} missing generated image, cannot generate video")
+            else:
+                print(f"[GENERATION] Scene {scene_id} already has video: {scene.get('generated_video_s3_url')}")
 
-        # Stitch videos together
-        # This is a placeholder - you'd implement actual video stitching
-        # For now, we'll use the first scene's video as placeholder
+        # Stitch videos together using FFmpeg
         video_urls = [s.get("generated_video_s3_url") for s in scenes if s.get("generated_video_s3_url")]
+        print(f"[GENERATION] Found {len(video_urls)} scene videos to stitch from {len(scenes)} scenes")
+        if not video_urls:
+            print(f"[GENERATION] No scene videos found. Scene video URLs: {[s.get('generated_video_s3_url') for s in scenes]}")
+            await send_webhook(project_id, "final_video", "failed")
+            return
+        
         if video_urls:
-            # In production, stitch videos using FFmpeg
-            # For now, use first video as placeholder
-            final_video_url = video_urls[0]  # Placeholder
-            update_final_video(project_id, final_video_url)
+            from app.services.video_stitcher import stitch_videos_with_transitions
             
-            # Send webhook notification
-            await send_webhook(project_id, "final_video", "done")
+            print(f"[GENERATION] Stitching {len(video_urls)} scene videos together...")
+            stitched_video_bytes = await stitch_videos_with_transitions(
+                video_s3_urls=video_urls,
+                project_id=project_id,
+                transition_duration=0.5,
+            )
+            
+            if stitched_video_bytes:
+                # Upload stitched video to S3
+                final_video_key = f"projects/{project_id}/final_video.mp4"
+                final_video_url = upload_file_to_s3(
+                    stitched_video_bytes,
+                    final_video_key,
+                    content_type="video/mp4"
+                )
+                print(f"[GENERATION] Stitched video uploaded to S3: {final_video_url}")
+                
+                # Update final video URL in DynamoDB
+                update_final_video(project_id, final_video_url)
+                
+                # Get presigned URL for webhook
+                presigned_url = get_presigned_url_from_s3_url(final_video_url)
+                
+                # Send webhook notification with presigned URL
+                await send_webhook(project_id, "final_video", "done", presigned_url=presigned_url)
+                print(f"[GENERATION] Full video generation completed for project {project_id}")
+            else:
+                print(f"[GENERATION] Failed to stitch videos")
+                await send_webhook(project_id, "final_video", "failed")
 
     except Exception as e:
         # Handle error

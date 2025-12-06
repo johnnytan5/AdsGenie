@@ -84,6 +84,29 @@ export function WebhookListener() {
             } else if (task_type === 'final_video') {
               console.log(`[WebhookListener] Refreshing project for final video`);
               await refreshProject();
+            } else if (task_type === 'bgm_generation' || task_type === 'add_bgm_to_video' || 
+                       task_type === 'tts_generation' || task_type === 'add_tts_to_video') {
+              // Audio enhancement webhook - dispatch custom event for audio page
+              console.log(`[WebhookListener] Dispatching audio webhook event: ${task_type}`);
+              window.dispatchEvent(new CustomEvent('webhook-update', {
+                detail: {
+                  taskType: task_type,
+                  status: status || 'done',
+                  presignedUrl: presigned_url
+                }
+              }));
+            } else if (task_type.startsWith('video_audio_')) {
+              // Audio enhancement webhook - dispatch custom event for audio page
+              console.log(`[WebhookListener] Dispatching audio webhook event: ${task_type}`);
+              window.dispatchEvent(new CustomEvent('webhook-update', {
+                detail: {
+                  taskType: task_type,
+                  status: status || 'done',
+                  presignedUrl: presigned_url
+                }
+              }));
+              // Also refresh project to update final video URL if needed
+              await refreshProject();
             } else {
               // Unknown task type, refresh whole project as fallback
               console.log(`[WebhookListener] Refreshing project for unknown task type: ${task_type}`);

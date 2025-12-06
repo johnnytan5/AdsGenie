@@ -11,18 +11,22 @@ from app.core.s3 import download_file_from_s3, extract_s3_key_from_url, upload_f
 
 async def combine_video_and_audio(
     video_s3_url: str,
-    audio_bytes: bytes,
-    project_id: str,
+    audio_bytes: Optional[bytes] = None,
+    project_id: str = "",
     output_key: Optional[str] = None,
+    audio_mode: str = "overwrite",
+    audio_s3_url: Optional[str] = None,
 ) -> Optional[str]:
     """
     Combine video and audio using FFmpeg.
 
     Args:
         video_s3_url: S3 URL of the video file
-        audio_bytes: Audio bytes to combine with video
+        audio_bytes: Audio bytes to combine with video (optional if audio_s3_url is provided)
         project_id: Project ID for generating output S3 key
         output_key: Optional custom S3 key for output (defaults to final_video_with_audio.mp4)
+        audio_mode: "overwrite" to replace existing audio, "overlay" to mix with existing audio
+        audio_s3_url: Optional S3 URL of the audio file (used if audio_bytes is not provided)
 
     Returns:
         S3 URL of the combined video with audio, or None if failed
@@ -49,10 +53,26 @@ async def combine_video_and_audio(
         with open(video_file, "wb") as f:
             f.write(video_bytes)
 
+        # Get audio bytes (either from parameter or download from S3)
+        if audio_bytes:
+            audio_data = audio_bytes
+        elif audio_s3_url:
+            audio_s3_key = extract_s3_key_from_url(audio_s3_url)
+            if not audio_s3_key:
+                print("[VIDEO AUDIO COMBINER] Failed to extract S3 key from audio URL")
+                return None
+            audio_data = download_file_from_s3(audio_s3_key)
+            if not audio_data:
+                print("[VIDEO AUDIO COMBINER] Failed to download audio from S3")
+                return None
+        else:
+            print("[VIDEO AUDIO COMBINER] Either audio_bytes or audio_s3_url must be provided")
+            return None
+
         # Save audio to temp file
         audio_file = os.path.join(temp_dir, "audio.mp3")
         with open(audio_file, "wb") as f:
-            f.write(audio_bytes)
+            f.write(audio_data)
 
         # Output file
         output_file = os.path.join(temp_dir, "output.mp4")
@@ -69,27 +89,39 @@ async def combine_video_and_audio(
         if not ffmpeg_cmd:
             raise FileNotFoundError("ffmpeg not found. Please install FFmpeg: brew install ffmpeg")
 
-        # Build FFmpeg command to combine video and audio
-        # -i video: input video file
-        # -i audio: input audio file
-        # -c:v copy: copy video codec (no re-encoding)
-        # -c:a aac: encode audio as AAC
-        # -shortest: finish encoding when the shortest input stream ends
-        # -map 0:v:0: map video from first input
-        # -map 1:a:0: map audio from second input
-        cmd = [
-            ffmpeg_cmd,
-            '-y',  # Overwrite output file
-            '-i', video_file,
-            '-i', audio_file,
-            '-c:v', 'copy',  # Copy video stream (no re-encoding)
-            '-c:a', 'aac',  # Encode audio as AAC
-            '-b:a', '192k',  # Audio bitrate
-            '-shortest',  # Finish when shortest stream ends
-            '-map', '0:v:0',  # Map video from first input
-            '-map', '1:a:0',  # Map audio from second input
-            output_file
-        ]
+        # Build FFmpeg command based on audio mode
+        if audio_mode == "overlay":
+            # Overlay mode: mix existing video audio with new BGM audio
+            # Extract video audio, mix with BGM, then combine back
+            # Use amix filter to mix audio tracks
+            cmd = [
+                ffmpeg_cmd,
+                '-y',  # Overwrite output file
+                '-i', video_file,
+                '-i', audio_file,
+                '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=2[a]',
+                '-c:v', 'copy',  # Copy video stream (no re-encoding)
+                '-map', '0:v:0',  # Map video from first input
+                '-map', '[a]',  # Map mixed audio
+                '-c:a', 'aac',  # Encode audio as AAC
+                '-b:a', '192k',  # Audio bitrate
+                output_file
+            ]
+        else:
+            # Overwrite mode: replace existing audio with new audio
+            cmd = [
+                ffmpeg_cmd,
+                '-y',  # Overwrite output file
+                '-i', video_file,
+                '-i', audio_file,
+                '-c:v', 'copy',  # Copy video stream (no re-encoding)
+                '-c:a', 'aac',  # Encode audio as AAC
+                '-b:a', '192k',  # Audio bitrate
+                '-shortest',  # Finish when shortest stream ends
+                '-map', '0:v:0',  # Map video from first input
+                '-map', '1:a:0',  # Map audio from second input
+                output_file
+            ]
 
         print(f"[VIDEO AUDIO COMBINER] Running FFmpeg command to combine video and audio...")
 

@@ -84,10 +84,6 @@ export default function EditorPage() {
     }
   }, [currentProject?.finalVideoS3Url, isGenerating]);
 
-  const handleModalSave = () => {
-    saveProject();
-    // TODO: Show success toast
-  };
 
   const handleModalExport = () => {
     // Export functionality is handled in the modal component
@@ -296,7 +292,6 @@ export default function EditorPage() {
         videoUrl={generatedVideoUrl}
         isOpen={isModalOpen}
         onClose={handleBackToEditing}
-        onSave={handleModalSave}
         onExport={handleModalExport}
         onBackToEditing={handleBackToEditing}
         projectId={currentProject?.id}

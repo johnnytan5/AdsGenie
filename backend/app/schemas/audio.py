@@ -143,3 +143,25 @@ class AddAudioToVideoRequest(BaseModel):
         description="Audio mode: 'overlay' to mix with existing audio, 'overwrite' to replace existing audio"
     )
 
+
+class TTSGenerationRequest(BaseModel):
+    """Schema for generating TTS audio only (without combining with video)."""
+    
+    tts_text: str = Field(
+        ...,
+        min_length=1,
+        description="Text to convert to speech"
+    )
+    voice_id: Optional[str] = Field(
+        None,
+        description="Optional ElevenLabs voice ID for TTS"
+    )
+
+
+class TTSGenerationResponse(BaseModel):
+    """Schema for TTS generation response."""
+    
+    project_id: str
+    tts_audio_s3_url: Optional[str] = None
+    status: str = Field(..., pattern="^(processing|done|failed)$")
+

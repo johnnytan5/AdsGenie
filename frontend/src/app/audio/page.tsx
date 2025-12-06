@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/projectStore';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { ArrowLeft, Music, Mic, Download } from 'lucide-react';
 import { WebhookListener } from '@/components/WebhookListener';
 
@@ -27,13 +26,31 @@ export default function AudioPage() {
   const [bgmTempo, setBgmTempo] = useState<Tempo>('medium');
   const [isGeneratingBGM, setIsGeneratingBGM] = useState(false);
   const [bgmStatus, setBgmStatus] = useState<'idle' | 'processing' | 'done' | 'failed'>('idle');
+  const [bgmAudioUrl, setBgmAudioUrl] = useState<string | null>(null);
+  const [audioMode, setAudioMode] = useState<'overlay' | 'overwrite'>('overwrite');
+  const [isAddingBGMToVideo, setIsAddingBGMToVideo] = useState(false);
   
   // TTS State
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [ttsText, setTtsText] = useState('');
-  const [ttsVoiceId, setTtsVoiceId] = useState('');
+  const [ttsGender, setTtsGender] = useState<'male' | 'female'>('male');
   const [isGeneratingTTS, setIsGeneratingTTS] = useState(false);
   const [ttsStatus, setTtsStatus] = useState<'idle' | 'processing' | 'done' | 'failed'>('idle');
+  const [ttsAudioUrl, setTtsAudioUrl] = useState<string | null>(null);
+  const [ttsAudioMode, setTtsAudioMode] = useState<'overlay' | 'overwrite'>('overwrite');
+  const [isAddingTTSToVideo, setIsAddingTTSToVideo] = useState(false);
+  
+  // Map gender to voice IDs (using popular ElevenLabs default voices)
+  const getVoiceIdByGender = (gender: 'male' | 'female'): string => {
+    // Popular ElevenLabs default voices
+    // Male: Adam (pNInz6obpgDQGcFmaJgB) or Antoni (ErXwobaYiN019PkySvjV)
+    // Female: Bella (EXAVITQu4vr4xnSDxMaL) or Rachel (21m00Tcm4TlvDq8ikWAM)
+    const voiceMap: Record<'male' | 'female', string> = {
+      male: 'pNInz6obpgDQGcFmaJgB', // Adam - Deep, American, Male
+      female: 'EXAVITQu4vr4xnSDxMaL', // Bella - Confident, British, Female
+    };
+    return voiceMap[gender];
+  };
   
   // Video with audio preview
   const [videoWithAudioUrl, setVideoWithAudioUrl] = useState<string | null>(null);
@@ -101,21 +118,19 @@ export default function AudioPage() {
 
     setIsGeneratingBGM(true);
     setBgmStatus('processing');
+    setBgmAudioUrl(null); // Clear previous audio
 
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/projects/${projectId}/add-audio-to-video`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/projects/${projectId}/generate-bgm`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            audio_type: 'background_music',
             video_description: videoDescription,
             duration: totalDuration, // Use actual video duration
-            tts_text: null,
-            voice_id: null,
             music_type: bgmMusicType,
             mood: bgmMood || null,
             tempo: bgmTempo,
@@ -127,10 +142,10 @@ export default function AudioPage() {
         throw new Error('Failed to generate BGM');
       }
 
-      // Webhook will update status
+      // Webhook will update status with audio URL
       // Register webhook task
       if ((window as any).__registerWebhookTask) {
-        (window as any).__registerWebhookTask(`video_audio_full_bgm`);
+        (window as any).__registerWebhookTask(`bgm_generation`);
       }
       
       // Note: Status will be updated via webhook
@@ -141,26 +156,58 @@ export default function AudioPage() {
     }
   };
 
-  const handleGenerateTTS = async () => {
-    if (!projectId || !currentProject?.finalVideoS3Url || !ttsEnabled || !ttsText.trim()) return;
+  const handleAddBGMToVideo = async () => {
+    if (!projectId || !bgmAudioUrl) return;
 
-    setIsGeneratingTTS(true);
-    setTtsStatus('processing');
+    setIsAddingBGMToVideo(true);
 
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/projects/${projectId}/add-audio-to-video`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/projects/${projectId}/add-bgm-to-video`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            audio_type: 'text_to_speech',
-            video_description: videoDescription,
-            duration: totalDuration, // Use actual video duration
+            audio_s3_url: bgmAudioUrl,
+            audio_mode: audioMode,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to add BGM to video');
+      }
+
+      // Webhook will update status
+      if ((window as any).__registerWebhookTask) {
+        (window as any).__registerWebhookTask(`add_bgm_to_video`);
+      }
+    } catch (error) {
+      console.error('Error adding BGM to video:', error);
+      setIsAddingBGMToVideo(false);
+    }
+  };
+
+  const handleGenerateTTS = async () => {
+    if (!projectId || !currentProject?.finalVideoS3Url || !ttsEnabled || !ttsText.trim()) return;
+
+    setIsGeneratingTTS(true);
+    setTtsStatus('processing');
+    setTtsAudioUrl(null); // Clear previous audio
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/projects/${projectId}/generate-tts`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
             tts_text: ttsText,
-            voice_id: ttsVoiceId || undefined,
+            voice_id: getVoiceIdByGender(ttsGender),
           }),
         }
       );
@@ -169,9 +216,10 @@ export default function AudioPage() {
         throw new Error('Failed to generate TTS');
       }
 
-      // Webhook will update status
+      // Webhook will update status with audio URL
+      // Register webhook task
       if ((window as any).__registerWebhookTask) {
-        (window as any).__registerWebhookTask(`video_audio_full_tts`);
+        (window as any).__registerWebhookTask(`tts_generation`);
       }
       
       // Note: Status will be updated via webhook
@@ -182,32 +230,84 @@ export default function AudioPage() {
     }
   };
 
+  const handleAddTTSToVideo = async () => {
+    if (!projectId || !ttsAudioUrl) return;
+
+    setIsAddingTTSToVideo(true);
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/projects/${projectId}/add-tts-to-video`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            audio_s3_url: ttsAudioUrl,
+            audio_mode: ttsAudioMode,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to add TTS to video');
+      }
+
+      // Webhook will update status
+      if ((window as any).__registerWebhookTask) {
+        (window as any).__registerWebhookTask(`add_tts_to_video`);
+      }
+    } catch (error) {
+      console.error('Error adding TTS to video:', error);
+      setIsAddingTTSToVideo(false);
+    }
+  };
+
   // Listen for webhook updates
   useEffect(() => {
     const handleWebhook = (event: CustomEvent) => {
       const { taskType, status, presignedUrl } = event.detail;
       
-      if (taskType === 'video_audio_full_bgm') {
+      if (taskType === 'bgm_generation') {
         if (status === 'done') {
           setBgmStatus('done');
           setIsGeneratingBGM(false);
           if (presignedUrl) {
-            setVideoWithAudioUrl(presignedUrl);
+            setBgmAudioUrl(presignedUrl);
           }
         } else if (status === 'failed') {
           setBgmStatus('failed');
           setIsGeneratingBGM(false);
         }
-      } else if (taskType === 'video_audio_full_tts') {
+      } else if (taskType === 'add_bgm_to_video') {
         if (status === 'done') {
-          setTtsStatus('done');
-          setIsGeneratingTTS(false);
+          setIsAddingBGMToVideo(false);
           if (presignedUrl) {
             setVideoWithAudioUrl(presignedUrl);
           }
         } else if (status === 'failed') {
+          setIsAddingBGMToVideo(false);
+        }
+      } else if (taskType === 'tts_generation') {
+        if (status === 'done') {
+          setTtsStatus('done');
+          setIsGeneratingTTS(false);
+          if (presignedUrl) {
+            setTtsAudioUrl(presignedUrl);
+          }
+        } else if (status === 'failed') {
           setTtsStatus('failed');
           setIsGeneratingTTS(false);
+        }
+      } else if (taskType === 'add_tts_to_video') {
+        if (status === 'done') {
+          setIsAddingTTSToVideo(false);
+          if (presignedUrl) {
+            setVideoWithAudioUrl(presignedUrl);
+          }
+        } else if (status === 'failed') {
+          setIsAddingTTSToVideo(false);
         }
       }
     };
@@ -430,6 +530,63 @@ export default function AudioPage() {
                 </>
               )}
             </div>
+
+            {/* BGM Audio Player */}
+            {bgmAudioUrl && bgmStatus === 'done' && (
+              <div className="mt-6 bg-slate-50 rounded-lg border border-slate-200 p-4">
+                <h3 className="text-sm font-semibold text-slate-900 mb-3">Preview BGM</h3>
+                <audio
+                  src={bgmAudioUrl}
+                  controls
+                  className="w-full mb-4"
+                >
+                  Your browser does not support the audio element.
+                </audio>
+                
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Audio Mode
+                    </label>
+                    <div className="flex items-center gap-4">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="audioMode"
+                          value="overwrite"
+                          checked={audioMode === 'overwrite'}
+                          onChange={(e) => setAudioMode(e.target.value as 'overwrite' | 'overlay')}
+                          className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-slate-700">Overwrite (Replace existing audio)</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="audioMode"
+                          value="overlay"
+                          checked={audioMode === 'overlay'}
+                          onChange={(e) => setAudioMode(e.target.value as 'overwrite' | 'overlay')}
+                          className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-slate-700">Overlay (Mix with existing audio)</span>
+                      </label>
+                    </div>
+                  </div>
+                  
+                  <Button
+                    variant="primary"
+                    onClick={handleAddBGMToVideo}
+                    disabled={isAddingBGMToVideo}
+                    loading={isAddingBGMToVideo}
+                    className="w-full"
+                  >
+                    <Music className="w-4 h-4 mr-2" />
+                    {isAddingBGMToVideo ? 'Adding to Video...' : 'Add to Video'}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* TTS Section */}
@@ -474,15 +631,39 @@ export default function AudioPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Voice ID (Optional)
+                    <label className="block text-sm font-medium text-slate-700 mb-3">
+                      Voice Gender
                     </label>
-                    <Input
-                      type="text"
-                      value={ttsVoiceId}
-                      onChange={(e) => setTtsVoiceId(e.target.value)}
-                      placeholder="Leave empty for default voice"
-                    />
+                    <div className="inline-flex rounded-lg border border-slate-300 bg-slate-50 p-1">
+                      <button
+                        type="button"
+                        onClick={() => setTtsGender('male')}
+                        className={`
+                          px-6 py-2.5 rounded-md text-sm font-medium transition-all duration-200
+                          ${
+                            ttsGender === 'male'
+                              ? 'bg-white text-slate-900 shadow-sm'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }
+                        `}
+                      >
+                        Male
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTtsGender('female')}
+                        className={`
+                          px-6 py-2.5 rounded-md text-sm font-medium transition-all duration-200
+                          ${
+                            ttsGender === 'female'
+                              ? 'bg-white text-slate-900 shadow-sm'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }
+                        `}
+                      >
+                        Female
+                      </button>
+                    </div>
                   </div>
 
                   <div className="pt-4">
@@ -506,6 +687,63 @@ export default function AudioPage() {
                 </>
               )}
             </div>
+
+            {/* TTS Audio Player */}
+            {ttsAudioUrl && ttsStatus === 'done' && (
+              <div className="mt-6 bg-slate-50 rounded-lg border border-slate-200 p-4">
+                <h3 className="text-sm font-semibold text-slate-900 mb-3">Preview TTS</h3>
+                <audio
+                  src={ttsAudioUrl}
+                  controls
+                  className="w-full mb-4"
+                >
+                  Your browser does not support the audio element.
+                </audio>
+                
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Audio Mode
+                    </label>
+                    <div className="flex items-center gap-4">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="ttsAudioMode"
+                          value="overwrite"
+                          checked={ttsAudioMode === 'overwrite'}
+                          onChange={(e) => setTtsAudioMode(e.target.value as 'overwrite' | 'overlay')}
+                          className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-slate-700">Overwrite (Replace existing audio)</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="ttsAudioMode"
+                          value="overlay"
+                          checked={ttsAudioMode === 'overlay'}
+                          onChange={(e) => setTtsAudioMode(e.target.value as 'overwrite' | 'overlay')}
+                          className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-slate-700">Overlay (Mix with existing audio)</span>
+                      </label>
+                    </div>
+                  </div>
+                  
+                  <Button
+                    variant="primary"
+                    onClick={handleAddTTSToVideo}
+                    disabled={isAddingTTSToVideo}
+                    loading={isAddingTTSToVideo}
+                    className="w-full"
+                  >
+                    <Mic className="w-4 h-4 mr-2" />
+                    {isAddingTTSToVideo ? 'Adding to Video...' : 'Add to Video'}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
