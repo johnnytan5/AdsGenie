@@ -368,11 +368,17 @@ async def generate_scene_video_task(
                 print(f"[BACKGROUND TASK] Scene video generation completed but webhook failed")
         else:
             error_msg = result.get("error", "Unknown error")
+            print(f"[BACKGROUND TASK] Video generation failed: {error_msg}")
+            print(f"[BACKGROUND TASK] Result: {result}")
             update_scene_status(project_id, scene_id, "failed")
             # Send webhook with failed status
             await send_webhook(project_id, f"scene_video_{scene_id}", "failed")
 
     except Exception as e:
+        # Log error with full traceback
+        print(f"[BACKGROUND TASK] Error generating scene video: {e}")
+        import traceback
+        print(f"[BACKGROUND TASK] Traceback: {traceback.format_exc()}")
         update_scene_status(project_id, scene_id, "failed")
         # Send webhook with failed status
         await send_webhook(project_id, f"scene_video_{scene_id}", "failed")

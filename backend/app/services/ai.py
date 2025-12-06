@@ -268,15 +268,31 @@ async def generate_video_veo3(
     try:
         client = get_genai_client()
         
-        # Download scene image (required)
-        scene_image = await download_image(scene_image_url)
+        # Helper function to convert PIL Image to GenAI Image
+        def pil_to_genai_image(pil_image: Image.Image) -> types.Image:
+            """Convert PIL Image to GenAI Image type."""
+            # Convert PIL Image to bytes
+            buffer = BytesIO()
+            pil_image.save(buffer, format='PNG')
+            image_bytes = buffer.getvalue()
+            
+            # Create GenAI Image with imageBytes and mimeType
+            return types.Image(
+                imageBytes=image_bytes,
+                mimeType='image/png'
+            )
+        
+        # Download scene image (required) and convert to GenAI Image type
+        scene_image_pil = await download_image(scene_image_url)
+        scene_image = pil_to_genai_image(scene_image_pil)
         
         # Build reference images list (up to 3)
         reference_images = []
         
         # Add global character if requested and available
         if use_global_character and global_character_url:
-            character_image = await download_image(global_character_url)
+            character_image_pil = await download_image(global_character_url)
+            character_image = pil_to_genai_image(character_image_pil)
             reference_images.append(
                 types.VideoGenerationReferenceImage(
                     image=character_image,
@@ -286,7 +302,8 @@ async def generate_video_veo3(
         
         # Add global setting if requested and available
         if use_global_setting and global_setting_url:
-            setting_image = await download_image(global_setting_url)
+            setting_image_pil = await download_image(global_setting_url)
+            setting_image = pil_to_genai_image(setting_image_pil)
             reference_images.append(
                 types.VideoGenerationReferenceImage(
                     image=setting_image,
@@ -308,7 +325,7 @@ async def generate_video_veo3(
             duration = 6
             print(f"[VIDEO GENERATION] Duration {original_duration} not valid for Veo 3.1, defaulting to 6 seconds. Valid values: {valid_durations}")
         
-        # Prepare config with reference images and duration
+        # Prepare config with reference images, duration, and aspect ratio
         config_kwargs = {}
         if reference_images:
             config_kwargs["reference_images"] = reference_images
@@ -317,12 +334,34 @@ async def generate_video_veo3(
         # Note: When using reference images, duration may be fixed at 8 seconds, but we'll try to set it
         config_kwargs["duration_seconds"] = duration
         
-        # Always create config (even if no reference images, we still want to set duration)
+        # Add aspect ratio to config (Veo 3.1 supports "16:9" or "9:16")
+        # Convert project aspect ratio to Veo format if needed
+        veo_aspect_ratio = aspect_ratio
+        if aspect_ratio not in ["16:9", "9:16"]:
+            # Map common aspect ratios to Veo-supported ones
+            # Default to 16:9 for landscape, 9:16 for portrait
+            if "16" in aspect_ratio or "9" in aspect_ratio:
+                # If it's a landscape ratio (width > height), use 16:9
+                # If it's a portrait ratio (height > width), use 9:16
+                # For simplicity, default to 16:9 if unclear
+                veo_aspect_ratio = "16:9"
+            else:
+                veo_aspect_ratio = "16:9"  # Default fallback
+        
+        config_kwargs["aspect_ratio"] = veo_aspect_ratio
+        print(f"[VIDEO GENERATION] Using aspect ratio: {veo_aspect_ratio} (from project: {aspect_ratio})")
+        
+        # Always create config (even if no reference images, we still want to set duration and aspect ratio)
         config = types.GenerateVideosConfig(**config_kwargs)
         
         # Generate video (this is an async operation)
         # Scene image is passed as the main image parameter
         # Global character/setting are passed as reference images in config
+        print(f"[VIDEO GENERATION] Starting video generation with model: veo-3.1-fast-generate-preview")
+        print(f"[VIDEO GENERATION] Prompt: {video_prompt[:100]}...")
+        print(f"[VIDEO GENERATION] Duration: {duration} seconds")
+        print(f"[VIDEO GENERATION] Reference images count: {len(reference_images)}")
+        
         operation = client.models.generate_videos(
             model="veo-3.1-fast-generate-preview",  # Using faster and cheaper model
             prompt=video_prompt,
@@ -330,40 +369,44 @@ async def generate_video_veo3(
             config=config,
         )
         
+        print(f"[VIDEO GENERATION] Operation created: {operation.name}")
+        print(f"[VIDEO GENERATION] Starting to poll operation status every 10 seconds...")
+        
         # Poll the operation status until the video is ready
         max_wait_time = 600  # 10 minutes max
         wait_interval = 10  # Check every 10 seconds
         elapsed_time = 0
         
         while not operation.done and elapsed_time < max_wait_time:
+            print(f"[VIDEO GENERATION] Polling... Elapsed: {elapsed_time}s, Operation done: {operation.done}")
             await asyncio.sleep(wait_interval)
             elapsed_time += wait_interval
             operation = client.operations.get(operation)
+            print(f"[VIDEO GENERATION] Operation status after poll: done={operation.done}, error={operation.error if hasattr(operation, 'error') else 'None'}")
         
         if not operation.done:
+            print(f"[VIDEO GENERATION] Operation timed out after {elapsed_time} seconds")
             return {
                 "success": False,
                 "error": "Video generation timed out",
             }
         
         if operation.error:
+            print(f"[VIDEO GENERATION] Operation error: {operation.error}")
             return {
                 "success": False,
                 "error": str(operation.error),
             }
         
+        print(f"[VIDEO GENERATION] Operation completed successfully! Downloading video...")
+        
         # Download the generated video
         generated_video = operation.response.generated_videos[0]
+        print(f"[VIDEO GENERATION] Generated video: {generated_video.video}")
         
-        # Download the file - this returns a file object
-        video_file_obj = client.files.download(file=generated_video.video)
-        
-        # Save to temporary bytes buffer
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp_file:
-            video_file_obj.save(tmp_file.name)
-            with open(tmp_file.name, 'rb') as f:
-                video_bytes = f.read()
-            os.unlink(tmp_file.name)  # Clean up temp file
+        # Download the file - this returns bytes directly
+        video_bytes = client.files.download(file=generated_video.video)
+        print(f"[VIDEO GENERATION] Video downloaded successfully, size: {len(video_bytes)} bytes")
         
         return {
             "success": True,
@@ -371,6 +414,9 @@ async def generate_video_veo3(
         }
         
     except Exception as e:
+        print(f"[VIDEO GENERATION] Exception occurred: {type(e).__name__}: {e}")
+        import traceback
+        print(f"[VIDEO GENERATION] Traceback: {traceback.format_exc()}")
         return {
             "success": False,
             "error": str(e),
