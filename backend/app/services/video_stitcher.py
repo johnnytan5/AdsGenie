@@ -100,34 +100,52 @@ async def stitch_videos_with_transitions(
                 print(f"[VIDEO STITCHER] Failed to get duration for {video_file}, using default 6 seconds")
                 durations.append(6.0)  # Default duration
         
-        # Build filter complex for cross-fade transitions
-        filter_parts = []
-        offset = 0.0
+        # Build filter complex for cross-fade transitions (video and audio)
+        video_filter_parts = []
+        audio_filter_parts = []
+        video_offset = 0.0
+        audio_offset = 0.0
         
-        # Add cross-fade transitions between videos
+        # Video cross-fade transitions
         # Format: [0:v][1:v]xfade=transition=fade:duration=0.5:offset=VIDEO0_END-0.5[v01];
         #         [v01][2:v]xfade=transition=fade:duration=0.5:offset=VIDEO0_END+VIDEO1_END-0.5[v02];
         #         etc.
         
-        current_input = "[0:v]"
+        current_video_input = "[0:v]"
+        current_audio_input = "[0:a]"
         
         for i in range(len(temp_video_files) - 1):
-            # Calculate offset (cumulative duration minus transition duration)
-            offset += durations[i] - transition_duration
+            # Calculate video offset (cumulative duration minus transition duration)
+            video_offset += durations[i] - transition_duration
             
-            # Output label for this step
-            output_label = f"[v{i+1:02d}]"
+            # Calculate audio offset (same as video for synchronization)
+            audio_offset += durations[i] - transition_duration
             
-            # Create cross-fade between current chain and next video
-            filter_parts.append(
-                f"{current_input}[{i+1}:v]xfade=transition=fade:duration={transition_duration}:offset={offset}{output_label}"
+            # Output labels for this step
+            video_output_label = f"[v{i+1:02d}]"
+            audio_output_label = f"[a{i+1:02d}]"
+            
+            # Create video cross-fade between current chain and next video
+            video_filter_parts.append(
+                f"{current_video_input}[{i+1}:v]xfade=transition=fade:duration={transition_duration}:offset={video_offset}{video_output_label}"
             )
             
-            # Next iteration uses this output as input
-            current_input = output_label
+            # Create audio cross-fade (acrossfade) between current chain and next audio
+            # acrossfade automatically applies crossfade near the end of first stream
+            # d=duration of crossfade, o=overlap (1=yes, 0=no)
+            audio_filter_parts.append(
+                f"{current_audio_input}[{i+1}:a]acrossfade=d={transition_duration}:o=1{audio_output_label}"
+            )
+            
+            # Next iteration uses these outputs as inputs
+            current_video_input = video_output_label
+            current_audio_input = audio_output_label
         
-        filter_complex = ";".join(filter_parts)
-        final_output = current_input  # Last output label
+        # Combine video and audio filter parts
+        all_filter_parts = video_filter_parts + audio_filter_parts
+        filter_complex = ";".join(all_filter_parts)
+        final_video_output = current_video_input  # Last video output label
+        final_audio_output = current_audio_input  # Last audio output label
         
         # Try to find ffmpeg in common locations
         ffmpeg_paths = ['ffmpeg', '/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg']
@@ -151,11 +169,14 @@ async def stitch_videos_with_transitions(
             '-y',  # Overwrite output file
             *input_args,
             '-filter_complex', filter_complex,
-            '-map', final_output,
+            '-map', final_video_output,  # Map video output
+            '-map', final_audio_output,  # Map audio output
             '-c:v', 'libx264',
             '-preset', 'medium',
             '-crf', '23',
             '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac',  # Audio codec
+            '-b:a', '192k',  # Audio bitrate
             output_path
         ]
         
