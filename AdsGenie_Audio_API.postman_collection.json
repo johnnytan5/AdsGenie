@@ -1,0 +1,490 @@
+{
+	"info": {
+		"_postman_id": "adsgenie-audio-api",
+		"name": "AdsGenie Audio API",
+		"description": "Postman collection for testing AdsGenie Audio API endpoints (Music & Text-to-Speech)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Setup",
+			"item": [
+				{
+					"name": "1. Create Project",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set(\"project_id\", response.project_id);",
+									"    console.log(\"Project ID saved:\", response.project_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Audio Test Project\",\n    \"aspect_ratio\": \"16:9\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/projects",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"projects"
+							]
+						},
+						"description": "Create a new project for testing audio endpoints"
+					},
+					"response": []
+				},
+				{
+					"name": "2. Create Scene",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set(\"scene_id\", response.scene_id);",
+									"    console.log(\"Scene ID saved:\", response.scene_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"description\": \"A person crying in a dark room\",\n    \"duration\": 10\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/projects/{{project_id}}/scenes",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"projects",
+								"{{project_id}}",
+								"scenes"
+							]
+						},
+						"description": "Create a scene for testing audio generation"
+					},
+					"response": []
+				},
+				{
+					"name": "3. Get Project (Verify Setup)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/projects/{{project_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"projects",
+								"{{project_id}}"
+							]
+						},
+						"description": "Verify project and scene were created successfully"
+					},
+					"response": []
+				}
+			],
+			"description": "Setup requests to create project and scene"
+		},
+		{
+			"name": "Audio Generation",
+			"item": [
+				{
+					"name": "Generate Background Music Only",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"audio_type\": \"background_music\",\n    \"video_description\": \"A person crying in a dark room\",\n    \"duration\": 10,\n    \"tts_text\": null,\n    \"voice_id\": null\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/projects/{{project_id}}/scenes/{{scene_id}}/generate-audio",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"projects",
+								"{{project_id}}",
+								"scenes",
+								"{{scene_id}}",
+								"generate-audio"
+							]
+						},
+						"description": "Generate only background music based on video description. OpenAI will determine the music type (sad, happy, etc.) based on the description."
+					},
+					"response": []
+				},
+				{
+					"name": "Generate Text-to-Speech Only",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"audio_type\": \"text_to_speech\",\n    \"video_description\": \"A person crying in a dark room\",\n    \"duration\": 10,\n    \"tts_text\": \"In the depths of sorrow, tears fall like rain, each drop a story of pain and loss.\",\n    \"voice_id\": null\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/projects/{{project_id}}/scenes/{{scene_id}}/generate-audio",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"projects",
+								"{{project_id}}",
+								"scenes",
+								"{{scene_id}}",
+								"generate-audio"
+							]
+						},
+						"description": "Generate only text-to-speech audio. The tts_text field is required."
+					},
+					"response": []
+				},
+				{
+					"name": "Generate Both (Music + TTS)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"audio_type\": \"both\",\n    \"video_description\": \"A person crying in a dark room\",\n    \"duration\": 10,\n    \"tts_text\": \"In the depths of sorrow, tears fall like rain, each drop a story of pain and loss.\",\n    \"voice_id\": null\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/projects/{{project_id}}/scenes/{{scene_id}}/generate-audio",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"projects",
+								"{{project_id}}",
+								"scenes",
+								"{{scene_id}}",
+								"generate-audio"
+							]
+						},
+						"description": "Generate both background music and text-to-speech. OpenAI determines music type, and both audio tracks are generated."
+					},
+					"response": []
+				},
+				{
+					"name": "Generate Music - Happy Scene",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"audio_type\": \"background_music\",\n    \"video_description\": \"A vibrant party with people dancing and celebrating\",\n    \"duration\": 15,\n    \"tts_text\": null,\n    \"voice_id\": null\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/projects/{{project_id}}/scenes/{{scene_id}}/generate-audio",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"projects",
+								"{{project_id}}",
+								"scenes",
+								"{{scene_id}}",
+								"generate-audio"
+							]
+						},
+						"description": "Test with a happy/party scene description. OpenAI should determine 'party' or 'happy' music type."
+					},
+					"response": []
+				},
+				{
+					"name": "Generate Music - Dramatic Scene",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"audio_type\": \"background_music\",\n    \"video_description\": \"An intense action sequence with explosions and car chases\",\n    \"duration\": 20,\n    \"tts_text\": null,\n    \"voice_id\": null\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/projects/{{project_id}}/scenes/{{scene_id}}/generate-audio",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"projects",
+								"{{project_id}}",
+								"scenes",
+								"{{scene_id}}",
+								"generate-audio"
+							]
+						},
+						"description": "Test with a dramatic/action scene. OpenAI should determine 'energetic' or 'dramatic' music type."
+					},
+					"response": []
+				}
+			],
+			"description": "Test audio generation endpoints with different scenarios"
+		},
+		{
+			"name": "Add Audio to Video",
+			"item": [
+				{
+					"name": "Add Background Music to Scene Video",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"audio_type\": \"background_music\",\n    \"video_description\": \"A person crying in a dark room\",\n    \"tts_text\": null,\n    \"voice_id\": null\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/projects/{{project_id}}/scenes/{{scene_id}}/add-audio-to-video",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"projects",
+								"{{project_id}}",
+								"scenes",
+								"{{scene_id}}",
+								"add-audio-to-video"
+							]
+						},
+						"description": "Add background music to an existing scene video. The scene must have a generated_video_s3_url."
+					},
+					"response": []
+				},
+				{
+					"name": "Add TTS to Scene Video",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"audio_type\": \"text_to_speech\",\n    \"video_description\": \"A person crying in a dark room\",\n    \"tts_text\": \"In the depths of sorrow, tears fall like rain, each drop a story of pain and loss.\",\n    \"voice_id\": null\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/projects/{{project_id}}/scenes/{{scene_id}}/add-audio-to-video",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"projects",
+								"{{project_id}}",
+								"scenes",
+								"{{scene_id}}",
+								"add-audio-to-video"
+							]
+						},
+						"description": "Add text-to-speech to an existing scene video."
+					},
+					"response": []
+				},
+				{
+					"name": "Add Both (Music + TTS) to Scene Video",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"audio_type\": \"both\",\n    \"video_description\": \"A person crying in a dark room\",\n    \"tts_text\": \"In the depths of sorrow, tears fall like rain, each drop a story of pain and loss.\",\n    \"voice_id\": null\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/projects/{{project_id}}/scenes/{{scene_id}}/add-audio-to-video",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"projects",
+								"{{project_id}}",
+								"scenes",
+								"{{scene_id}}",
+								"add-audio-to-video"
+							]
+						},
+						"description": "Add both background music and text-to-speech to an existing scene video."
+					},
+					"response": []
+				},
+				{
+					"name": "Add Audio to Full Project Video",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"audio_type\": \"both\",\n    \"video_description\": \"A complete advertisement showcasing our product with multiple scenes\",\n    \"tts_text\": \"Welcome to our amazing product. Experience the difference today.\",\n    \"voice_id\": null\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/projects/{{project_id}}/add-audio-to-video",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"projects",
+								"{{project_id}}",
+								"add-audio-to-video"
+							]
+						},
+						"description": "Add audio to the full project video (final_video_s3_url). The project must have a final video generated."
+					},
+					"response": []
+				}
+			],
+			"description": "Test adding audio to existing videos"
+		},
+		{
+			"name": "Health Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/health",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"health"
+					]
+				},
+				"description": "Check if the API server is running"
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "project_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "scene_id",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
+
