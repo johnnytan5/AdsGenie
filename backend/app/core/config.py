@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     # AI Services - Google GenAI (used for both NanoBanana and VEO3)
     GOOGLE_API_KEY: Optional[str] = None
 
+    # AI Services - OpenAI (used for music type determination)
+    OPENAI_API_KEY: Optional[str] = None
+
+    # Audio Services - ElevenLabs
+    ELEVENLABS_API_KEY: Optional[str] = None
+    ELEVENLABS_VOICE_ID: Optional[str] = "yj4ZLC16WtrBEwPzIXzI"
+
     # Frontend URL for webhooks
     FRONTEND_URL: str = "http://localhost:3000"
 

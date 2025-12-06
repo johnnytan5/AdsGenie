@@ -28,6 +28,12 @@ from app.schemas.generation import (
     FullVideoGenerationRequest,
     FullVideoGenerationResponse,
 )
+from app.schemas.audio import (
+    AudioGenerationRequest,
+    AudioGenerationResponse,
+    VideoAudioRequest,
+    VideoAudioResponse,
+)
 
 __all__ = [
     "ProjectCreate",
@@ -49,4 +55,8 @@ __all__ = [
     "VideoGenerationResponse",
     "FullVideoGenerationRequest",
     "FullVideoGenerationResponse",
+    "AudioGenerationRequest",
+    "AudioGenerationResponse",
+    "VideoAudioRequest",
+    "VideoAudioResponse",
 ]

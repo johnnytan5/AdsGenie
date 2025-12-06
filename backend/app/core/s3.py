@@ -119,6 +119,14 @@ def generate_s3_key(project_id: str, file_type: str, scene_id: Optional[str] = N
             return f"projects/{project_id}/scenes/{scene_id}/generated_image.png"
         elif file_type == "generated_video":
             return f"projects/{project_id}/scenes/{scene_id}/generated_video.mp4"
+        elif file_type == "background_music":
+            return f"projects/{project_id}/scenes/{scene_id}/background_music.mp3"
+        elif file_type == "tts_audio":
+            return f"projects/{project_id}/scenes/{scene_id}/tts_audio.mp3"
+        elif file_type == "combined_audio":
+            return f"projects/{project_id}/scenes/{scene_id}/combined_audio.mp3"
+        elif file_type == "video_with_audio":
+            return f"projects/{project_id}/scenes/{scene_id}/video_with_audio.mp4"
     else:
         if file_type == "character_sketch":
             return f"projects/{project_id}/global/character_sketch.png"
@@ -130,5 +138,7 @@ def generate_s3_key(project_id: str, file_type: str, scene_id: Optional[str] = N
             return f"projects/{project_id}/global/setting_image.png"
         elif file_type == "final_video":
             return f"projects/{project_id}/final_video.mp4"
+        elif file_type == "final_video_with_audio":
+            return f"projects/{project_id}/final_video_with_audio.mp4"
 
     raise ValueError(f"Unknown file type: {file_type}")

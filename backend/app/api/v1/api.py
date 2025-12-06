@@ -9,6 +9,7 @@ from app.api.v1.endpoints import (
     global_settings,
     scenes,
     generation,
+    audio,
 )
 
 api_router = APIRouter()
@@ -19,3 +20,4 @@ api_router.include_router(projects.router, prefix="/projects", tags=["projects"]
 api_router.include_router(global_settings.router, prefix="/projects", tags=["global-settings"])
 api_router.include_router(scenes.router, prefix="/projects", tags=["scenes"])
 api_router.include_router(generation.router, prefix="/projects", tags=["generation"])
+api_router.include_router(audio.router, prefix="/projects", tags=["audio"])
