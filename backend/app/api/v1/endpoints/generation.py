@@ -101,6 +101,8 @@ async def generate_scene_video(
         aspect_ratio=request.aspect_ratio,
         voiceover_text=request.voiceover_text,
         duration=scene.get("duration", 5),
+        use_global_character=request.use_global_character,
+        use_global_setting=request.use_global_setting,
     )
 
     return VideoGenerationResponse(

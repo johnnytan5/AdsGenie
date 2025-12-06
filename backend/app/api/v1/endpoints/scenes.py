@@ -1,7 +1,7 @@
 """
 Scene management endpoints.
 """
-from fastapi import APIRouter, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form
 from typing import Optional
 
 from app.schemas.scene import SceneCreate, SceneResponse, SceneUpdate, SceneReorderRequest
@@ -14,8 +14,8 @@ router = APIRouter()
 @router.post("/{project_id}/scenes", response_model=SceneResponse, status_code=status.HTTP_201_CREATED)
 async def add_scene(
     project_id: str,
-    description: str,
-    duration: int,
+    description: str = Form(...),
+    duration: int = Form(...),
     sketch_file: Optional[UploadFile] = File(None),
 ):
     """Add a scene to a project."""
@@ -67,8 +67,8 @@ async def add_scene(
 async def update_scene(
     project_id: str,
     scene_id: str,
-    description: Optional[str] = None,
-    duration: Optional[int] = None,
+    description: Optional[str] = Form(None),
+    duration: Optional[int] = Form(None),
     sketch_file: Optional[UploadFile] = File(None),
 ):
     """Update a scene."""

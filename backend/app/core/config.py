@@ -37,11 +37,11 @@ class Settings(BaseSettings):
     S3_BUCKET_NAME: str = "adsgenie-assets"
     S3_ENDPOINT_URL: Optional[str] = None  # For local development
 
-    # AI Services
-    NANOBANANA_API_KEY: Optional[str] = None
-    NANOBANANA_API_URL: str = "https://api.nanobanana.com/v1"
-    VEO3_API_KEY: Optional[str] = None
-    VEO3_API_URL: str = "https://api.veo3.com/v1"
+    # AI Services - Google GenAI (used for both NanoBanana and VEO3)
+    GOOGLE_API_KEY: Optional[str] = None
+
+    # Frontend URL for webhooks
+    FRONTEND_URL: str = "http://localhost:3000"
 
     class Config:
         env_file = ".env"

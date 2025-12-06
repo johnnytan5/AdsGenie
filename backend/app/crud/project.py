@@ -181,17 +181,41 @@ def update_global_settings(
     expression_attribute_values = {}
     expression_attribute_names = {}
 
+    # Handle character update - initialize global_character if it doesn't exist
     if character:
         if character.description is not None:
-            update_expression_parts.append("global_character.#description = :char_desc")
-            expression_attribute_names["#description"] = "description"
-            expression_attribute_values[":char_desc"] = character.description
+            existing_character = project.get("global_character") or {}
+            # Check if global_character exists, if not initialize it
+            if not existing_character or existing_character is None:
+                # Initialize with description, preserving any existing fields
+                char_init = {"description": character.description}
+                if isinstance(existing_character, dict):
+                    char_init.update({k: v for k, v in existing_character.items() if k != "description"})
+                update_expression_parts.append("global_character = :char_init")
+                expression_attribute_values[":char_init"] = char_init
+            else:
+                # Update existing nested field
+                update_expression_parts.append("global_character.#char_desc = :char_desc")
+                expression_attribute_names["#char_desc"] = "description"
+                expression_attribute_values[":char_desc"] = character.description
 
+    # Handle setting update - initialize global_setting if it doesn't exist
     if setting:
         if setting.description is not None:
-            update_expression_parts.append("global_setting.#description = :set_desc")
-            expression_attribute_names["#description"] = "description"
-            expression_attribute_values[":set_desc"] = setting.description
+            existing_setting = project.get("global_setting") or {}
+            # Check if global_setting exists, if not initialize it
+            if not existing_setting or existing_setting is None:
+                # Initialize with description, preserving any existing fields
+                set_init = {"description": setting.description}
+                if isinstance(existing_setting, dict):
+                    set_init.update({k: v for k, v in existing_setting.items() if k != "description"})
+                update_expression_parts.append("global_setting = :set_init")
+                expression_attribute_values[":set_init"] = set_init
+            else:
+                # Update existing nested field
+                update_expression_parts.append("global_setting.#set_desc = :set_desc")
+                expression_attribute_names["#set_desc"] = "description"
+                expression_attribute_values[":set_desc"] = setting.description
 
     if not update_expression_parts:
         return project
@@ -203,15 +227,23 @@ def update_global_settings(
 
     table = get_projects_table()
     try:
-        table.update_item(
-            Key={"project_id": project_id},
-            UpdateExpression=update_expression,
-            ExpressionAttributeValues=expression_attribute_values,
-            ExpressionAttributeNames=expression_attribute_names if expression_attribute_names else None,
-            ReturnValues="ALL_NEW",
-        )
+        update_params = {
+            "Key": {"project_id": project_id},
+            "UpdateExpression": update_expression,
+            "ExpressionAttributeValues": expression_attribute_values,
+            "ReturnValues": "ALL_NEW",
+        }
+        
+        # Only include ExpressionAttributeNames if it's not empty
+        if expression_attribute_names:
+            update_params["ExpressionAttributeNames"] = expression_attribute_names
+        
+        table.update_item(**update_params)
         return get_project(project_id)
-    except ClientError:
+    except ClientError as e:
+        print(f"Error updating global settings: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 

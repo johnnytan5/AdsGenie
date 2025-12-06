@@ -49,5 +49,5 @@ class GlobalUpdateRequest(BaseModel):
 class GlobalUpdateResponse(BaseModel):
     """Schema for global update response."""
 
-    global_character: GlobalCharacter
-    global_setting: GlobalSetting
+    global_character: Optional[GlobalCharacter] = None
+    global_setting: Optional[GlobalSetting] = None
