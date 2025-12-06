@@ -7,8 +7,9 @@ import { Input } from './ui/Input';
 import { Textarea } from './ui/Textarea';
 import { FileUpload } from './ui/FileUpload';
 import { Button } from './ui/Button';
-import { GripVertical, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { GripVertical, Trash2, ChevronDown, ChevronUp, Pencil } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { ExcalidrawModal } from './ExcalidrawModal';
 
 interface SceneCardProps {
   scene: Scene;
@@ -33,6 +34,9 @@ export const SceneCard: React.FC<SceneCardProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isExcalidrawOpen, setIsExcalidrawOpen] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
   const { currentProject, generateSceneImage, setScene } = useProjectStore();
 
@@ -45,6 +49,12 @@ export const SceneCard: React.FC<SceneCardProps> = ({
       setIsGeneratingImage(false);
     }
   }, [scene.generatedImage, scene.status, isGeneratingImage]);
+
+  // Reset image loaded state when image URL changes
+  useEffect(() => {
+    setImageLoaded(false);
+    setImageError(false);
+  }, [scene.generatedImage, scene.sketchS3Url]);
 
   const handleSceneChange = (field: string, value: any) => {
     // Only update local state - no API calls
@@ -110,21 +120,76 @@ export const SceneCard: React.FC<SceneCardProps> = ({
         </div>
 
         {/* Thumbnail */}
-        <div className="aspect-video bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-center overflow-hidden">
+        <div className="aspect-video bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-center overflow-hidden relative">
           {scene.generatedImage ? (
-            <img
-              src={scene.generatedImage}
-              alt={`Scene ${scene.order}`}
-              className="w-full h-full object-cover"
-            />
+            <>
+              {/* Skeleton/Placeholder */}
+              {!imageLoaded && (
+                <div 
+                  className="absolute inset-0 bg-gradient-to-br from-slate-200 via-slate-100 to-slate-200 animate-pulse"
+                  style={{
+                    animationDelay: `${index * 100}ms`,
+                  }}
+                />
+              )}
+              {/* Actual Image - Hidden until loaded */}
+              <img
+                src={scene.generatedImage}
+                alt={`Scene ${scene.order}`}
+                className={`w-full h-full object-cover transition-opacity duration-500 ${
+                  imageLoaded ? 'opacity-100 animate-fade-in-up' : 'opacity-0'
+                }`}
+                style={{
+                  animationDelay: imageLoaded ? `${index * 100}ms` : '0ms',
+                  animationFillMode: 'both',
+                }}
+                onLoad={() => {
+                  setImageLoaded(true);
+                  setImageError(false);
+                }}
+                onError={() => {
+                  setImageError(true);
+                  setImageLoaded(false);
+                }}
+              />
+            </>
           ) : scene.sketchS3Url ? (
-            <img
-              src={scene.sketchS3Url}
-              alt={`Scene ${scene.order} sketch`}
-              className="w-full h-full object-cover opacity-50"
-            />
+            <>
+              {/* Skeleton/Placeholder */}
+              {!imageLoaded && (
+                <div 
+                  className="absolute inset-0 bg-gradient-to-br from-slate-200 via-slate-100 to-slate-200 animate-pulse"
+                  style={{
+                    animationDelay: `${index * 100}ms`,
+                  }}
+                />
+              )}
+              {/* Actual Image - Hidden until loaded */}
+              <img
+                src={scene.sketchS3Url}
+                alt={`Scene ${scene.order} sketch`}
+                className={`w-full h-full object-cover opacity-50 transition-opacity duration-500 ${
+                  imageLoaded ? 'opacity-50 animate-fade-in-up' : 'opacity-0'
+                }`}
+                style={{
+                  animationDelay: imageLoaded ? `${index * 100}ms` : '0ms',
+                  animationFillMode: 'both',
+                }}
+                onLoad={() => {
+                  setImageLoaded(true);
+                  setImageError(false);
+                }}
+                onError={() => {
+                  setImageError(true);
+                  setImageLoaded(false);
+                }}
+              />
+            </>
           ) : (
             <span className="text-slate-400 text-sm">No image</span>
+          )}
+          {imageError && (
+            <span className="text-slate-400 text-sm">Failed to load image</span>
           )}
         </div>
 
@@ -149,12 +214,26 @@ export const SceneCard: React.FC<SceneCardProps> = ({
               rows={3}
             />
             
-            <FileUpload
-              label="Upload Sketch/Image"
-              accept="image/*"
-              currentFile={scene.sketch}
-              onChange={(file) => handleSceneChange('sketch', file)}
-            />
+            <div className="space-y-2">
+              <FileUpload
+                label="Upload Sketch/Image"
+                accept="image/*"
+                currentFile={scene.sketch}
+                onChange={(file) => handleSceneChange('sketch', file)}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsExcalidrawOpen(true);
+                }}
+                className="w-full"
+              >
+                <Pencil className="w-4 h-4 mr-2" />
+                Draw Sketch
+              </Button>
+            </div>
             
             <Button
               variant="outline"
@@ -180,6 +259,16 @@ export const SceneCard: React.FC<SceneCardProps> = ({
           </div>
         )}
       </div>
+
+      {/* Excalidraw Modal */}
+      <ExcalidrawModal
+        isOpen={isExcalidrawOpen}
+        onClose={() => setIsExcalidrawOpen(false)}
+        onSave={(file) => {
+          handleSceneChange('sketch', file);
+          setIsExcalidrawOpen(false);
+        }}
+      />
     </Card>
   );
 }

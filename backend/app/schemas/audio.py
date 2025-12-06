@@ -156,6 +156,12 @@ class TTSGenerationRequest(BaseModel):
         None,
         description="Optional ElevenLabs voice ID for TTS"
     )
+    speed: Optional[float] = Field(
+        1.0,
+        ge=0.7,
+        le=1.2,
+        description="Speech speed (0.7 to 1.2, where 1.0 is normal speed)"
+    )
 
 
 class TTSGenerationResponse(BaseModel):

@@ -213,6 +213,7 @@ async def generate_tts_only_task(
     project_id: str,
     tts_text: str,
     voice_id: Optional[str] = None,
+    speed: Optional[float] = None,
 ) -> None:
     """
     Background task to generate TTS audio only (without combining with video).
@@ -221,6 +222,7 @@ async def generate_tts_only_task(
         project_id: Project ID
         tts_text: Text to convert to speech
         voice_id: Optional voice ID for TTS
+        speed: Optional speech speed (0.7 to 1.2, where 1.0 is normal speed)
     """
     logger.info(f"[BACKGROUND TASK] Starting TTS generation for project {project_id}")
     
@@ -232,10 +234,11 @@ async def generate_tts_only_task(
             return
 
         # Generate TTS audio
-        logger.info("Generating TTS audio")
+        logger.info(f"Generating TTS audio with speed: {speed if speed else 'default (1.0)'}")
         tts_audio_bytes = await generate_text_to_speech(
             text=tts_text,
-            voice_id=voice_id
+            voice_id=voice_id,
+            speed=speed
         )
 
         if not tts_audio_bytes:

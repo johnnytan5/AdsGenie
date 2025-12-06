@@ -82,8 +82,14 @@ export function WebhookListener() {
               console.log(`[WebhookListener] Refreshing scene ${sceneId} for video update${presigned_url ? ' with presigned URL' : ''}`);
               await refreshScene(sceneId, presigned_url);
             } else if (task_type === 'final_video') {
-              console.log(`[WebhookListener] Refreshing project for final video`);
+              console.log(`[WebhookListener] Refreshing project for final video${presigned_url ? ' with presigned URL' : ''}`);
               await refreshProject();
+              // Dispatch event to notify editor page that final video is ready
+              if (status === 'done' && presigned_url) {
+                window.dispatchEvent(new CustomEvent('final-video-ready', {
+                  detail: { presignedUrl: presigned_url }
+                }));
+              }
             } else if (task_type === 'bgm_generation' || task_type === 'add_bgm_to_video' || 
                        task_type === 'tts_generation' || task_type === 'add_tts_to_video') {
               // Audio enhancement webhook - dispatch custom event for audio page

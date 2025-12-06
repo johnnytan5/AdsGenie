@@ -77,17 +77,50 @@ async def combine_video_and_audio(
         # Output file
         output_file = os.path.join(temp_dir, "output.mp4")
 
-        # Find FFmpeg
+        # Find FFmpeg and ffprobe
         ffmpeg_paths = ['ffmpeg', '/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg']
+        ffprobe_paths = ['ffprobe', '/opt/homebrew/bin/ffprobe', '/usr/local/bin/ffprobe']
         ffmpeg_cmd = None
+        ffprobe_cmd = None
+        
         for path in ffmpeg_paths:
             result = subprocess.run(['which', path], capture_output=True, text=True)
             if result.returncode == 0 or os.path.exists(path):
                 ffmpeg_cmd = path
                 break
+        
+        for path in ffprobe_paths:
+            result = subprocess.run(['which', path], capture_output=True, text=True)
+            if result.returncode == 0 or os.path.exists(path):
+                ffprobe_cmd = path
+                break
 
         if not ffmpeg_cmd:
             raise FileNotFoundError("ffmpeg not found. Please install FFmpeg: brew install ffmpeg")
+        if not ffprobe_cmd:
+            raise FileNotFoundError("ffprobe not found. Please install FFmpeg: brew install ffmpeg")
+
+        # Get video and audio durations
+        def get_duration(file_path: str) -> float:
+            """Get duration of a media file in seconds."""
+            try:
+                result = subprocess.run(
+                    [ffprobe_cmd, '-v', 'error', '-show_entries',
+                     'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1',
+                     file_path],
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode == 0:
+                    return float(result.stdout.strip())
+            except:
+                pass
+            return 0.0
+
+        video_duration = get_duration(video_file)
+        audio_duration = get_duration(audio_file)
+        
+        print(f"[VIDEO AUDIO COMBINER] Video duration: {video_duration}s, Audio duration: {audio_duration}s")
 
         # Build FFmpeg command based on audio mode
         if audio_mode == "overlay":
@@ -109,19 +142,56 @@ async def combine_video_and_audio(
             ]
         else:
             # Overwrite mode: replace existing audio with new audio
-            cmd = [
-                ffmpeg_cmd,
-                '-y',  # Overwrite output file
-                '-i', video_file,
-                '-i', audio_file,
-                '-c:v', 'copy',  # Copy video stream (no re-encoding)
-                '-c:a', 'aac',  # Encode audio as AAC
-                '-b:a', '192k',  # Audio bitrate
-                '-shortest',  # Finish when shortest stream ends
-                '-map', '0:v:0',  # Map video from first input
-                '-map', '1:a:0',  # Map audio from second input
-                output_file
-            ]
+            # If audio is shorter than video, pad it with silence to match video length
+            if audio_duration > 0 and video_duration > 0 and audio_duration < video_duration:
+                print(f"[VIDEO AUDIO COMBINER] Audio ({audio_duration}s) is shorter than video ({video_duration}s), padding with silence")
+                # Use apad filter to pad audio with silence to match video duration
+                cmd = [
+                    ffmpeg_cmd,
+                    '-y',  # Overwrite output file
+                    '-i', video_file,
+                    '-i', audio_file,
+                    '-filter_complex', f'[1:a]apad=whole_dur={video_duration}[padded_audio]',
+                    '-c:v', 'copy',  # Copy video stream (no re-encoding)
+                    '-map', '0:v:0',  # Map video from first input
+                    '-map', '[padded_audio]',  # Map padded audio
+                    '-c:a', 'aac',  # Encode audio as AAC
+                    '-b:a', '192k',  # Audio bitrate
+                    output_file
+                ]
+            else:
+                # Audio is longer or equal to video, or durations couldn't be determined
+                # Use shortest to avoid issues, or if audio >= video, just map normally
+                if audio_duration > 0 and video_duration > 0 and audio_duration >= video_duration:
+                    # Audio is longer, use shortest to match video length
+                    cmd = [
+                        ffmpeg_cmd,
+                        '-y',  # Overwrite output file
+                        '-i', video_file,
+                        '-i', audio_file,
+                        '-c:v', 'copy',  # Copy video stream (no re-encoding)
+                        '-c:a', 'aac',  # Encode audio as AAC
+                        '-b:a', '192k',  # Audio bitrate
+                        '-shortest',  # Finish when shortest stream (video) ends
+                        '-map', '0:v:0',  # Map video from first input
+                        '-map', '1:a:0',  # Map audio from second input
+                        output_file
+                    ]
+                else:
+                    # Fallback: use shortest if durations couldn't be determined
+                    cmd = [
+                        ffmpeg_cmd,
+                        '-y',  # Overwrite output file
+                        '-i', video_file,
+                        '-i', audio_file,
+                        '-c:v', 'copy',  # Copy video stream (no re-encoding)
+                        '-c:a', 'aac',  # Encode audio as AAC
+                        '-b:a', '192k',  # Audio bitrate
+                        '-shortest',  # Finish when shortest stream ends
+                        '-map', '0:v:0',  # Map video from first input
+                        '-map', '1:a:0',  # Map audio from second input
+                        output_file
+                    ]
 
         print(f"[VIDEO AUDIO COMBINER] Running FFmpeg command to combine video and audio...")
 

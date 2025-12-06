@@ -76,6 +76,18 @@ export const VideoPreviewModal: React.FC<VideoPreviewModalProps> = ({
           <Button
             variant="outline"
             onClick={onBackToEditing}
+            style={{
+              borderColor: '#5227FF',
+              color: '#5227FF',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#5227FF';
+              e.currentTarget.style.color = 'white';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = '#5227FF';
+            }}
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Editing
@@ -85,6 +97,22 @@ export const VideoPreviewModal: React.FC<VideoPreviewModalProps> = ({
               variant="outline"
               onClick={handleAudioEnhancement}
               disabled={!projectId}
+              style={{
+                borderColor: '#5227FF',
+                color: '#5227FF',
+              }}
+              onMouseEnter={(e) => {
+                if (!e.currentTarget.disabled) {
+                  e.currentTarget.style.backgroundColor = '#5227FF';
+                  e.currentTarget.style.color = 'white';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!e.currentTarget.disabled) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = '#5227FF';
+                }
+              }}
             >
               <Music className="w-4 h-4 mr-2" />
               Audio Enhancement
@@ -92,6 +120,17 @@ export const VideoPreviewModal: React.FC<VideoPreviewModalProps> = ({
             <Button
               variant="primary"
               onClick={handleExport}
+              style={{
+                backgroundColor: '#5227FF',
+                color: 'white',
+                border: 'none',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#4218E6';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#5227FF';
+              }}
             >
               <Download className="w-4 h-4 mr-2" />
               Export Video

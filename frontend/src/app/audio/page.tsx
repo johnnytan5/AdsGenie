@@ -1,17 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/projectStore';
 import { Button } from '@/components/ui/Button';
 import { ArrowLeft, Music, Mic, Download } from 'lucide-react';
 import { WebhookListener } from '@/components/WebhookListener';
+import { UserJourney } from '@/components/UserJourney';
+import CursorGenie from '@/components/CursorGenie';
 
 type MusicType = 'happy' | 'sad' | 'energetic' | 'calm' | 'dramatic' | 'romantic' | 'party' | 'mysterious' | 'inspiring' | 'upbeat' | 'ambient';
 type Mood = 'uplifting' | 'melancholic' | 'intense' | 'peaceful' | 'playful' | 'serious';
 type Tempo = 'slow' | 'medium' | 'fast';
 
-export default function AudioPage() {
+function AudioPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const projectId = searchParams.get('projectId');
@@ -34,11 +36,18 @@ export default function AudioPage() {
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [ttsText, setTtsText] = useState('');
   const [ttsGender, setTtsGender] = useState<'male' | 'female'>('male');
+  const [ttsSpeed, setTtsSpeed] = useState<number>(0.6); // 0 to 1, maps to 0.7 to 1.2 (0.6 = 1.0 normal speed)
   const [isGeneratingTTS, setIsGeneratingTTS] = useState(false);
   const [ttsStatus, setTtsStatus] = useState<'idle' | 'processing' | 'done' | 'failed'>('idle');
   const [ttsAudioUrl, setTtsAudioUrl] = useState<string | null>(null);
   const [ttsAudioMode, setTtsAudioMode] = useState<'overlay' | 'overwrite'>('overwrite');
   const [isAddingTTSToVideo, setIsAddingTTSToVideo] = useState(false);
+  
+  // Map speed from 0-1 scale to ElevenLabs 0.7-1.2 range
+  // 0 -> 0.7 (slowest), 0.6 -> 1.0 (normal), 1 -> 1.2 (fastest)
+  const mapSpeedToElevenLabs = (speed: number): number => {
+    return 0.7 + (speed * 0.5); // Linear mapping: 0.7 + (0 to 0.5) = 0.7 to 1.2
+  };
   
   // Map gender to voice IDs (using popular ElevenLabs default voices)
   const getVoiceIdByGender = (gender: 'male' | 'female'): string => {
@@ -208,6 +217,7 @@ export default function AudioPage() {
           body: JSON.stringify({
             tts_text: ttsText,
             voice_id: getVoiceIdByGender(ttsGender),
+            speed: mapSpeedToElevenLabs(ttsSpeed),
           }),
         }
       );
@@ -331,7 +341,22 @@ export default function AudioPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <p className="text-slate-400 mb-4">Project not found</p>
-          <Button variant="outline" onClick={() => router.push('/projects')}>
+          <Button 
+            variant="outline" 
+            onClick={() => router.push('/projects')}
+            style={{
+              borderColor: '#5227FF',
+              color: '#5227FF',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#5227FF';
+              e.currentTarget.style.color = 'white';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = '#5227FF';
+            }}
+          >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Projects
           </Button>
@@ -345,7 +370,22 @@ export default function AudioPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <p className="text-slate-400 mb-4">Please generate a full video first</p>
-          <Button variant="outline" onClick={() => router.push(`/editor/${projectId}`)}>
+          <Button 
+            variant="outline" 
+            onClick={() => router.push(`/editor/${projectId}`)}
+            style={{
+              borderColor: '#5227FF',
+              color: '#5227FF',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#5227FF';
+              e.currentTarget.style.color = 'white';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = '#5227FF';
+            }}
+          >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Editor
           </Button>
@@ -355,8 +395,9 @@ export default function AudioPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 flex flex-col">
       <WebhookListener />
+      <CursorGenie size={80} />
       
       {/* Header */}
       <header className="bg-white border-b border-slate-200 px-6 py-4">
@@ -366,6 +407,17 @@ export default function AudioPage() {
               variant="ghost"
               size="sm"
               onClick={() => router.push(`/editor/${projectId}`)}
+              style={{
+                color: '#5227FF',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#5227FF';
+                e.currentTarget.style.color = 'white';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+                e.currentTarget.style.color = '#5227FF';
+              }}
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Editor
@@ -377,6 +429,9 @@ export default function AudioPage() {
           </div>
         </div>
       </header>
+
+      {/* User Journey Progress */}
+      <UserJourney />
 
       {/* Main Content */}
       <div className="max-w-6xl mx-auto px-6 py-8">
@@ -398,6 +453,18 @@ export default function AudioPage() {
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);
+                  }}
+                  style={{
+                    borderColor: '#5227FF',
+                    color: '#5227FF',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#5227FF';
+                    e.currentTarget.style.color = 'white';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.color = '#5227FF';
                   }}
                 >
                   <Download className="w-4 h-4 mr-2" />
@@ -427,8 +494,8 @@ export default function AudioPage() {
           {/* BGM Section */}
           <div className="bg-white rounded-lg border border-slate-200 p-6">
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                <Music className="w-5 h-5 text-blue-600" />
+              <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                <Music className="w-5 h-5 text-purple-600" />
               </div>
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Background Music</h2>
@@ -443,7 +510,10 @@ export default function AudioPage() {
                   id="bgm-enabled"
                   checked={bgmEnabled}
                   onChange={(e) => setBgmEnabled(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                  className="w-4 h-4 text-purple-600 border-slate-300 rounded focus:ring-purple-500"
+                  style={{
+                    accentColor: '#5227FF',
+                  }}
                 />
                 <label htmlFor="bgm-enabled" className="text-sm font-medium text-slate-700">
                   Enable Background Music
@@ -459,7 +529,7 @@ export default function AudioPage() {
                 <select
                   value={bgmMusicType}
                   onChange={(e) => setBgmMusicType(e.target.value as MusicType)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
                   <option value="happy">Happy</option>
                   <option value="sad">Sad</option>
@@ -482,7 +552,7 @@ export default function AudioPage() {
                 <select
                   value={bgmMood}
                   onChange={(e) => setBgmMood(e.target.value as Mood | '')}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
                   <option value="">Default</option>
                   <option value="uplifting">Uplifting</option>
@@ -501,7 +571,7 @@ export default function AudioPage() {
                 <select
                   value={bgmTempo}
                   onChange={(e) => setBgmTempo(e.target.value as Tempo)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
                   <option value="slow">Slow</option>
                   <option value="medium">Medium</option>
@@ -516,6 +586,21 @@ export default function AudioPage() {
                       disabled={isGeneratingBGM || !currentProject.finalVideoS3Url || !bgmEnabled}
                       loading={isGeneratingBGM}
                       className="w-full"
+                      style={{
+                        backgroundColor: '#5227FF',
+                        color: 'white',
+                        border: 'none',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!e.currentTarget.disabled) {
+                          e.currentTarget.style.backgroundColor = '#4218E6';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!e.currentTarget.disabled) {
+                          e.currentTarget.style.backgroundColor = '#5227FF';
+                        }
+                      }}
                     >
                       <Music className="w-4 h-4 mr-2" />
                       {isGeneratingBGM ? 'Generating BGM...' : 'Generate BGM'}
@@ -556,7 +641,10 @@ export default function AudioPage() {
                           value="overwrite"
                           checked={audioMode === 'overwrite'}
                           onChange={(e) => setAudioMode(e.target.value as 'overwrite' | 'overlay')}
-                          className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500"
+                          className="w-4 h-4 text-purple-600 border-slate-300 focus:ring-purple-500"
+                          style={{
+                            accentColor: '#5227FF',
+                          }}
                         />
                         <span className="text-sm text-slate-700">Overwrite (Replace existing audio)</span>
                       </label>
@@ -567,7 +655,10 @@ export default function AudioPage() {
                           value="overlay"
                           checked={audioMode === 'overlay'}
                           onChange={(e) => setAudioMode(e.target.value as 'overwrite' | 'overlay')}
-                          className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500"
+                          className="w-4 h-4 text-purple-600 border-slate-300 focus:ring-purple-500"
+                          style={{
+                            accentColor: '#5227FF',
+                          }}
                         />
                         <span className="text-sm text-slate-700">Overlay (Mix with existing audio)</span>
                       </label>
@@ -580,6 +671,21 @@ export default function AudioPage() {
                     disabled={isAddingBGMToVideo}
                     loading={isAddingBGMToVideo}
                     className="w-full"
+                    style={{
+                      backgroundColor: '#5227FF',
+                      color: 'white',
+                      border: 'none',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!e.currentTarget.disabled) {
+                        e.currentTarget.style.backgroundColor = '#4218E6';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!e.currentTarget.disabled) {
+                        e.currentTarget.style.backgroundColor = '#5227FF';
+                      }
+                    }}
                   >
                     <Music className="w-4 h-4 mr-2" />
                     {isAddingBGMToVideo ? 'Adding to Video...' : 'Add to Video'}
@@ -608,7 +714,10 @@ export default function AudioPage() {
                   id="tts-enabled"
                   checked={ttsEnabled}
                   onChange={(e) => setTtsEnabled(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                  className="w-4 h-4 text-purple-600 border-slate-300 rounded focus:ring-purple-500"
+                  style={{
+                    accentColor: '#5227FF',
+                  }}
                 />
                 <label htmlFor="tts-enabled" className="text-sm font-medium text-slate-700">
                   Enable TTS
@@ -626,7 +735,7 @@ export default function AudioPage() {
                       onChange={(e) => setTtsText(e.target.value)}
                       placeholder="Enter the narration text for your video..."
                       rows={6}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                     />
                   </div>
 
@@ -642,10 +751,24 @@ export default function AudioPage() {
                           px-6 py-2.5 rounded-md text-sm font-medium transition-all duration-200
                           ${
                             ttsGender === 'male'
-                              ? 'bg-white text-slate-900 shadow-sm'
-                              : 'text-slate-600 hover:text-slate-900'
+                              ? 'bg-purple-600 text-white shadow-sm'
+                              : 'text-slate-600 hover:text-purple-600'
                           }
                         `}
+                        style={{
+                          backgroundColor: ttsGender === 'male' ? '#5227FF' : undefined,
+                          color: ttsGender === 'male' ? 'white' : undefined,
+                        }}
+                        onMouseEnter={(e) => {
+                          if (ttsGender !== 'male') {
+                            e.currentTarget.style.color = '#5227FF';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (ttsGender !== 'male') {
+                            e.currentTarget.style.color = '';
+                          }
+                        }}
                       >
                         Male
                       </button>
@@ -656,14 +779,53 @@ export default function AudioPage() {
                           px-6 py-2.5 rounded-md text-sm font-medium transition-all duration-200
                           ${
                             ttsGender === 'female'
-                              ? 'bg-white text-slate-900 shadow-sm'
-                              : 'text-slate-600 hover:text-slate-900'
+                              ? 'bg-purple-600 text-white shadow-sm'
+                              : 'text-slate-600 hover:text-purple-600'
                           }
                         `}
+                        style={{
+                          backgroundColor: ttsGender === 'female' ? '#5227FF' : undefined,
+                          color: ttsGender === 'female' ? 'white' : undefined,
+                        }}
+                        onMouseEnter={(e) => {
+                          if (ttsGender !== 'female') {
+                            e.currentTarget.style.color = '#5227FF';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (ttsGender !== 'female') {
+                            e.currentTarget.style.color = '';
+                          }
+                        }}
                       >
                         Female
                       </button>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Speech Speed: {mapSpeedToElevenLabs(ttsSpeed).toFixed(2)}x
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-slate-500">Slow (0.7x)</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={ttsSpeed}
+                        onChange={(e) => setTtsSpeed(parseFloat(e.target.value))}
+                        className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                        style={{
+                          accentColor: '#5227FF',
+                        }}
+                      />
+                      <span className="text-xs text-slate-500">Fast (1.2x)</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Normal speed (1.0x) is at slider position 0.6
+                    </p>
                   </div>
 
                   <div className="pt-4">
@@ -673,6 +835,21 @@ export default function AudioPage() {
                       disabled={isGeneratingTTS || !ttsText.trim() || !currentProject.finalVideoS3Url}
                       loading={isGeneratingTTS}
                       className="w-full"
+                      style={{
+                        backgroundColor: '#5227FF',
+                        color: 'white',
+                        border: 'none',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!e.currentTarget.disabled) {
+                          e.currentTarget.style.backgroundColor = '#4218E6';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!e.currentTarget.disabled) {
+                          e.currentTarget.style.backgroundColor = '#5227FF';
+                        }
+                      }}
                     >
                       <Mic className="w-4 h-4 mr-2" />
                       {isGeneratingTTS ? 'Generating TTS...' : 'Generate TTS'}
@@ -713,7 +890,10 @@ export default function AudioPage() {
                           value="overwrite"
                           checked={ttsAudioMode === 'overwrite'}
                           onChange={(e) => setTtsAudioMode(e.target.value as 'overwrite' | 'overlay')}
-                          className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500"
+                          className="w-4 h-4 text-purple-600 border-slate-300 focus:ring-purple-500"
+                          style={{
+                            accentColor: '#5227FF',
+                          }}
                         />
                         <span className="text-sm text-slate-700">Overwrite (Replace existing audio)</span>
                       </label>
@@ -724,7 +904,10 @@ export default function AudioPage() {
                           value="overlay"
                           checked={ttsAudioMode === 'overlay'}
                           onChange={(e) => setTtsAudioMode(e.target.value as 'overwrite' | 'overlay')}
-                          className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500"
+                          className="w-4 h-4 text-purple-600 border-slate-300 focus:ring-purple-500"
+                          style={{
+                            accentColor: '#5227FF',
+                          }}
                         />
                         <span className="text-sm text-slate-700">Overlay (Mix with existing audio)</span>
                       </label>
@@ -737,6 +920,21 @@ export default function AudioPage() {
                     disabled={isAddingTTSToVideo}
                     loading={isAddingTTSToVideo}
                     className="w-full"
+                    style={{
+                      backgroundColor: '#5227FF',
+                      color: 'white',
+                      border: 'none',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!e.currentTarget.disabled) {
+                        e.currentTarget.style.backgroundColor = '#4218E6';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!e.currentTarget.disabled) {
+                        e.currentTarget.style.backgroundColor = '#5227FF';
+                      }
+                    }}
                   >
                     <Mic className="w-4 h-4 mr-2" />
                     {isAddingTTSToVideo ? 'Adding to Video...' : 'Add to Video'}
@@ -771,5 +969,17 @@ export default function AudioPage() {
       </div>
 
     </div>
+  );
+}
+
+export default function AudioPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-slate-400">Loading...</p>
+      </div>
+    }>
+      <AudioPageContent />
+    </Suspense>
   );
 }

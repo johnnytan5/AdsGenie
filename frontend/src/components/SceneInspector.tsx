@@ -8,6 +8,8 @@ import { FileUpload } from './ui/FileUpload';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { Switch } from './ui/Switch';
+import { ExcalidrawModal } from './ExcalidrawModal';
+import { Pencil } from 'lucide-react';
 
 interface SceneInspectorProps {
   sceneId: string | null;
@@ -17,6 +19,8 @@ export const SceneInspector: React.FC<SceneInspectorProps> = ({ sceneId }) => {
   const { currentProject, updateScene, generateSceneImage, generateSceneVideo, setScene } = useProjectStore();
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+  const [isExcalidrawOpen, setIsExcalidrawOpen] = useState(false);
+  const [sceneImageLoaded, setSceneImageLoaded] = useState(false);
 
   // Find the scene (will be null if not found)
   const scene = currentProject?.scenes.find((s) => s.id === sceneId) || null;
@@ -38,10 +42,17 @@ export const SceneInspector: React.FC<SceneInspectorProps> = ({ sceneId }) => {
     }
   }, [scene?.generatedImage, scene?.generatedVideo, scene?.status, isGeneratingImage, isGeneratingVideo, scene]);
 
+  // Reset image loaded state when image URL changes
+  useEffect(() => {
+    if (scene) {
+      setSceneImageLoaded(false);
+    }
+  }, [scene?.generatedImage, scene?.sketchS3Url, scene]);
+
   // Early returns after all hooks
   if (!currentProject || !sceneId) {
     return (
-      <div className="w-80 bg-white border-l border-slate-200 h-full flex items-center justify-center">
+      <div className="w-full bg-white h-full flex items-center justify-center">
         <p className="text-slate-400 text-sm">Select a scene to edit</p>
       </div>
     );
@@ -90,7 +101,7 @@ export const SceneInspector: React.FC<SceneInspectorProps> = ({ sceneId }) => {
   };
 
   return (
-    <div className="w-80 bg-white border-l border-slate-200 h-full overflow-y-auto p-6">
+    <div className="w-full h-full overflow-y-auto p-6">
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-slate-900">Scene Inspector</h2>
         <p className="text-sm text-slate-500 mt-1">Scene {scene.order}</p>
@@ -121,12 +132,35 @@ export const SceneInspector: React.FC<SceneInspectorProps> = ({ sceneId }) => {
               rows={3}
             />
             
-            <FileUpload
-              label="Upload Sketch/Image"
-              accept="image/*"
-              currentFile={scene.sketch}
-              onChange={(file) => handleSceneChange('sketch', file)}
-            />
+            <div className="space-y-2">
+              <FileUpload
+                label="Upload Sketch/Image"
+                accept="image/*"
+                currentFile={scene.sketch}
+                onChange={(file) => handleSceneChange('sketch', file)}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsExcalidrawOpen(true)}
+                className="w-full"
+                style={{
+                  borderColor: '#5227FF',
+                  color: '#5227FF',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#5227FF';
+                  e.currentTarget.style.color = 'white';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = '#5227FF';
+                }}
+              >
+                <Pencil className="w-4 h-4 mr-2" />
+                Draw Sketch
+              </Button>
+            </div>
             
             {/* Global Character/Setting Toggles for Image Generation */}
             <div className="space-y-2 pt-2 border-t border-slate-200">
@@ -151,22 +185,50 @@ export const SceneInspector: React.FC<SceneInspectorProps> = ({ sceneId }) => {
             {scene.generatedImage && (
               <div>
                 <p className="text-xs text-slate-600 mb-2">Generated Image</p>
-                <img
-                  src={scene.generatedImage}
-                  alt="Scene"
-                  className="w-full rounded-lg border border-slate-200"
-                />
+                <div className="relative rounded-lg border border-slate-200 overflow-hidden">
+                  {/* Skeleton/Placeholder */}
+                  {!sceneImageLoaded && (
+                    <div className="absolute inset-0 bg-gradient-to-br from-slate-200 via-slate-100 to-slate-200 animate-pulse" />
+                  )}
+                  {/* Actual Image - Hidden until loaded */}
+                  <img
+                    src={scene.generatedImage}
+                    alt="Scene"
+                    className={`w-full rounded-lg transition-opacity duration-500 ${
+                      sceneImageLoaded ? 'opacity-100 animate-fade-in-up' : 'opacity-0'
+                    }`}
+                    style={{
+                      animationDelay: sceneImageLoaded ? '0ms' : '0ms',
+                      animationFillMode: 'both',
+                    }}
+                    onLoad={() => setSceneImageLoaded(true)}
+                  />
+                </div>
               </div>
             )}
             
             {scene.sketchS3Url && !scene.generatedImage && (
               <div>
                 <p className="text-xs text-slate-600 mb-2">Sketch</p>
-                <img
-                  src={scene.sketchS3Url}
-                  alt="Scene Sketch"
-                  className="w-full rounded-lg border border-slate-200 opacity-50"
-                />
+                <div className="relative rounded-lg border border-slate-200 overflow-hidden">
+                  {/* Skeleton/Placeholder */}
+                  {!sceneImageLoaded && (
+                    <div className="absolute inset-0 bg-gradient-to-br from-slate-200 via-slate-100 to-slate-200 animate-pulse" />
+                  )}
+                  {/* Actual Image - Hidden until loaded */}
+                  <img
+                    src={scene.sketchS3Url}
+                    alt="Scene Sketch"
+                    className={`w-full rounded-lg opacity-50 transition-opacity duration-500 ${
+                      sceneImageLoaded ? 'opacity-50 animate-fade-in-up' : 'opacity-0'
+                    }`}
+                    style={{
+                      animationDelay: sceneImageLoaded ? '0ms' : '0ms',
+                      animationFillMode: 'both',
+                    }}
+                    onLoad={() => setSceneImageLoaded(true)}
+                  />
+                </div>
                 {scene.status === 'processing' && (
                   <p className="text-xs text-slate-500 mt-1">Generating image...</p>
                 )}
@@ -181,6 +243,22 @@ export const SceneInspector: React.FC<SceneInspectorProps> = ({ sceneId }) => {
                 className="w-full"
                 disabled={((!scene.imageDescription || scene.imageDescription.trim() === '') && !scene.sketch && !scene.sketchS3Url) || isGeneratingImage || scene.status === 'processing'}
                 loading={isGeneratingImage || scene.status === 'processing'}
+                style={{
+                  borderColor: '#5227FF',
+                  color: '#5227FF',
+                }}
+                onMouseEnter={(e) => {
+                  if (!e.currentTarget.disabled) {
+                    e.currentTarget.style.backgroundColor = '#5227FF';
+                    e.currentTarget.style.color = 'white';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!e.currentTarget.disabled) {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.color = '#5227FF';
+                  }
+                }}
               >
                 {(isGeneratingImage || scene.status === 'processing') ? 'Generating...' : 'Generate Image'}
               </Button>
@@ -218,69 +296,6 @@ export const SceneInspector: React.FC<SceneInspectorProps> = ({ sceneId }) => {
           </div>
         </Card>
 
-        {/* Audio Settings */}
-        <Card className="p-4">
-          <h3 className="text-sm font-medium text-slate-900 mb-4">Audio</h3>
-          <div className="space-y-6">
-            {/* Voiceover Toggle */}
-            <Switch
-              label="Voiceover"
-              checked={scene.voiceoverEnabled || false}
-              onChange={(checked) => handleUpdate({ voiceoverEnabled: checked })}
-            />
-
-            {/* Voiceover Options - Only show if enabled */}
-            {scene.voiceoverEnabled && (
-              <div className="space-y-4 pl-4 border-l-2 border-slate-200">
-                <Textarea
-                  label="Narration"
-                  value={scene.voiceoverText || ''}
-                  onChange={(e) => handleUpdate({ voiceoverText: e.target.value })}
-                  placeholder="Enter the narration text for this scene..."
-                  rows={4}
-                />
-                
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-slate-700">
-                    Voice Gender
-                  </label>
-                  <div className="flex gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name={`voiceover-gender-${scene.id}`}
-                        value="male"
-                        checked={scene.voiceoverGender === 'male'}
-                        onChange={() => handleUpdate({ voiceoverGender: 'male' })}
-                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm text-slate-700">Male</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name={`voiceover-gender-${scene.id}`}
-                        value="female"
-                        checked={scene.voiceoverGender === 'female'}
-                        onChange={() => handleUpdate({ voiceoverGender: 'female' })}
-                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm text-slate-700">Female</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Background Music Toggle */}
-            <Switch
-              label="Background Music"
-              checked={scene.backgroundMusicEnabled || false}
-              onChange={(checked) => handleUpdate({ backgroundMusicEnabled: checked })}
-            />
-          </div>
-        </Card>
-
         {/* Generate Scene Video - Independent at bottom */}
         <div className="pt-4 border-t border-slate-200 space-y-4">
           {/* Video Generation Options */}
@@ -305,6 +320,21 @@ export const SceneInspector: React.FC<SceneInspectorProps> = ({ sceneId }) => {
             className="w-full"
             disabled={(!scene.generatedImage || !scene.description || scene.description === 'New Scene' || scene.description.trim() === '') || isGeneratingVideo || scene.status === 'processing'}
             loading={isGeneratingVideo || scene.status === 'processing'}
+            style={{
+              backgroundColor: '#5227FF',
+              color: 'white',
+              border: 'none',
+            }}
+            onMouseEnter={(e) => {
+              if (!e.currentTarget.disabled) {
+                e.currentTarget.style.backgroundColor = '#4218E6';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!e.currentTarget.disabled) {
+                e.currentTarget.style.backgroundColor = '#5227FF';
+              }
+            }}
           >
             {(isGeneratingVideo || scene.status === 'processing') ? 'Generating...' : 'Generate Scene Video'}
           </Button>
@@ -322,6 +352,16 @@ export const SceneInspector: React.FC<SceneInspectorProps> = ({ sceneId }) => {
           )}
         </div>
       </div>
+
+      {/* Excalidraw Modal */}
+      <ExcalidrawModal
+        isOpen={isExcalidrawOpen}
+        onClose={() => setIsExcalidrawOpen(false)}
+        onSave={(file) => {
+          handleSceneChange('sketch', file);
+          setIsExcalidrawOpen(false);
+        }}
+      />
     </div>
   );
 };

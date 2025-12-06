@@ -164,23 +164,28 @@ def download_file_from_s3(s3_key: str) -> bytes:
 
 def extract_s3_key_from_url(s3_url: str) -> Optional[str]:
     """
-    Extract S3 key from an S3 URL.
+    Extract S3 key from an S3 URL (handles both regular S3 URLs and presigned URLs).
 
     Args:
-        s3_url: S3 URL (e.g., https://bucket.s3.region.amazonaws.com/key/path)
+        s3_url: S3 URL (e.g., https://bucket.s3.region.amazonaws.com/key/path) or presigned URL
 
     Returns:
         S3 key if URL is an S3 URL, None otherwise
     """
+    # Remove query parameters (for presigned URLs)
+    url_without_params = s3_url.split('?')[0]
+    
     # Check if it's an S3 URL
-    if settings.S3_BUCKET_NAME in s3_url:
+    if settings.S3_BUCKET_NAME in url_without_params:
         # Extract the key part after the bucket name
-        if f"{settings.S3_BUCKET_NAME}/" in s3_url:
-            return s3_url.split(f"{settings.S3_BUCKET_NAME}/", 1)[1]
-        elif f"{settings.S3_BUCKET_NAME}.s3." in s3_url:
-            parts = s3_url.split(f"{settings.S3_BUCKET_NAME}.s3.", 1)
+        if f"{settings.S3_BUCKET_NAME}/" in url_without_params:
+            key = url_without_params.split(f"{settings.S3_BUCKET_NAME}/", 1)[1]
+            return key
+        elif f"{settings.S3_BUCKET_NAME}.s3." in url_without_params:
+            parts = url_without_params.split(f"{settings.S3_BUCKET_NAME}.s3.", 1)
             if len(parts) > 1 and "/" in parts[1]:
-                return parts[1].split("/", 1)[1]
+                key = parts[1].split("/", 1)[1]
+                return key
     return None
 
 

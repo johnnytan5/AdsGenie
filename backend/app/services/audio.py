@@ -137,7 +137,8 @@ async def generate_background_music(
 
 async def generate_text_to_speech(
     text: str,
-    voice_id: Optional[str] = None
+    voice_id: Optional[str] = None,
+    speed: Optional[float] = None
 ) -> Optional[bytes]:
     """
     Generate text-to-speech audio using ElevenLabs.
@@ -145,6 +146,7 @@ async def generate_text_to_speech(
     Args:
         text: Text to convert to speech
         voice_id: Optional voice ID
+        speed: Optional speech speed (0.7 to 1.2, where 1.0 is normal speed)
         
     Returns:
         Audio bytes or None if failed
@@ -155,7 +157,7 @@ async def generate_text_to_speech(
         
         elevenlabs_service = ElevenLabsService()
         
-        audio_bytes = elevenlabs_service.generate_audio_bytes(text, voice_id)
+        audio_bytes = elevenlabs_service.generate_audio_bytes(text, voice_id, speed)
         
         if audio_bytes:
             logger.info(f"Successfully generated TTS audio for text: {text[:50]}...")

@@ -4,17 +4,20 @@ interface CardProps {
   children: React.ReactNode;
   className?: string;
   onClick?: () => void;
+  style?: React.CSSProperties;
 }
 
 export const Card: React.FC<CardProps> = ({
   children,
   className = '',
   onClick,
+  style,
 }) => {
   return (
     <div
       className={`bg-white border border-slate-200 rounded-lg shadow-sm ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''} ${className}`}
       onClick={onClick}
+      style={style}
     >
       {children}
     </div>

@@ -218,6 +218,7 @@ async def generate_tts_only(
         project_id=project_id,
         tts_text=request.tts_text,
         voice_id=request.voice_id,
+        speed=request.speed,
     )
 
     return TTSGenerationResponse(

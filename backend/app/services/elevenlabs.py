@@ -23,13 +23,14 @@ class ElevenLabsService:
             'Content-Type': 'application/json'
         } if self.api_key else {}
     
-    def generate_audio_bytes(self, text: str, voice_id: Optional[str] = None) -> Optional[bytes]:
+    def generate_audio_bytes(self, text: str, voice_id: Optional[str] = None, speed: Optional[float] = None) -> Optional[bytes]:
         """
         Generate audio from text using ElevenLabs TTS and return raw bytes.
         
         Args:
             text: Text to convert to speech
             voice_id: Voice ID to use (optional, uses default if not provided)
+            speed: Speech speed (0.7 to 1.2, where 1.0 is normal speed, optional)
             
         Returns:
             Audio bytes or None if failed
@@ -42,13 +43,21 @@ class ElevenLabsService:
             voice = voice_id or self.default_voice_id
             url = f"{self.base_url}/text-to-speech/{voice}"
             
+            voice_settings = {
+                "stability": 0.75,
+                "clarity": 0.9,
+                "similarity_boost": 0.8
+            }
+            
+            # Add speed parameter if provided (ElevenLabs supports 0.7 to 1.2)
+            if speed is not None:
+                # Clamp speed to valid range
+                speed = max(0.7, min(1.2, speed))
+                voice_settings["speed"] = speed
+            
             data = {
                 "text": text,
-                "voice_settings": {
-                    "stability": 0.75,
-                    "clarity": 0.9,
-                    "similarity_boost": 0.8
-                }
+                "voice_settings": voice_settings
             }
             
             logger.info(f"Generating audio bytes for text: {text[:100]}...")

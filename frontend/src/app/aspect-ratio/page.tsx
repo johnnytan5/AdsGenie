@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useProjectStore, AspectRatio } from '@/store/projectStore';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { UserJourney } from '@/components/UserJourney';
 
 export default function AspectRatioPage() {
   const router = useRouter();
@@ -28,9 +29,13 @@ export default function AspectRatioPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-8">
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      {/* User Journey Progress */}
+      <UserJourney />
+      
+      <div className="flex-1 p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="mb-8">
           <h1 className="text-3xl font-bold text-slate-900 mb-2">
             Choose Aspect Ratio
           </h1>
@@ -92,6 +97,7 @@ export default function AspectRatioPage() {
           >
             Continue
           </Button>
+        </div>
         </div>
       </div>
     </div>
