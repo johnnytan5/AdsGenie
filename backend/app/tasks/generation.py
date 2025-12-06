@@ -13,7 +13,8 @@ from app.crud.project import (
     update_global_setting_s3_urls,
 )
 from app.services.ai import generate_image_nanobanana, generate_image_gemini3_pro, generate_video_veo3
-from app.core.s3 import upload_file_to_s3, generate_s3_key, get_presigned_url_from_s3_url
+from app.services.video_stitcher import stitch_videos_with_transitions
+from app.core.s3 import upload_file_to_s3, generate_s3_key, get_presigned_url_from_s3_url, delete_file_from_s3, extract_s3_key_from_url
 from app.core.webhook import send_webhook
 
 
@@ -404,6 +405,25 @@ async def generate_full_video_task(
         if not scenes:
             return
 
+        # Delete existing final video if it exists
+        existing_final_video_url = project.get("final_video_s3_url")
+        if existing_final_video_url:
+            print(f"[BACKGROUND TASK] Deleting existing final video: {existing_final_video_url}")
+            s3_key = extract_s3_key_from_url(existing_final_video_url)
+            if s3_key:
+                try:
+                    delete_file_from_s3(s3_key)
+                    print(f"[BACKGROUND TASK] Deleted existing final video from S3")
+                except Exception as e:
+                    print(f"[BACKGROUND TASK] Failed to delete existing final video: {e}")
+            
+            # Clear final video URL from project
+            update_final_video(project_id, "")  # Clear it by setting to empty string
+            print(f"[BACKGROUND TASK] Cleared final video URL from project")
+            
+            # Send webhook to update frontend (remove the "View Full Video" button)
+            await send_webhook(project_id, "final_video", "cleared")
+
         # Ensure all scenes have generated images
         for scene in scenes:
             if not scene.get("generated_image_s3_url"):
@@ -431,18 +451,52 @@ async def generate_full_video_task(
                     use_global_setting=True,
                 )
 
-        # Stitch videos together
-        # This is a placeholder - you'd implement actual video stitching
-        # For now, we'll use the first scene's video as placeholder
+        # Stitch videos together with cross-fade transitions
         video_urls = [s.get("generated_video_s3_url") for s in scenes if s.get("generated_video_s3_url")]
-        if video_urls:
-            # In production, stitch videos using FFmpeg
-            # For now, use first video as placeholder
-            final_video_url = video_urls[0]  # Placeholder
+        if not video_urls:
+            print(f"[BACKGROUND TASK] No videos to stitch for project {project_id}")
+            await send_webhook(project_id, "final_video", "failed")
+            return
+        
+        if len(video_urls) == 1:
+            # Only one video, use it as the final video
+            print(f"[BACKGROUND TASK] Only one video, using it as final video")
+            final_video_url = video_urls[0]
             update_final_video(project_id, final_video_url)
-            
-            # Send webhook notification
             await send_webhook(project_id, "final_video", "done")
+            return
+        
+        print(f"[BACKGROUND TASK] Stitching {len(video_urls)} videos together with cross-fade transitions...")
+        
+        # Stitch videos with cross-fade transitions
+        stitched_video_bytes = await stitch_videos_with_transitions(
+            video_s3_urls=video_urls,
+            project_id=project_id,
+            transition_duration=0.5,  # 0.5 second cross-fade transitions
+        )
+        
+        if not stitched_video_bytes:
+            print(f"[BACKGROUND TASK] Failed to stitch videos")
+            await send_webhook(project_id, "final_video", "failed")
+            return
+        
+        # Upload stitched video to S3
+        print(f"[BACKGROUND TASK] Uploading stitched video to S3...")
+        s3_key = generate_s3_key(project_id, "final_video")
+        final_video_url = upload_file_to_s3(stitched_video_bytes, s3_key, content_type="video/mp4")
+        print(f"[BACKGROUND TASK] Stitched video uploaded to S3: {final_video_url}")
+        
+        # Update project with final video URL
+        update_final_video(project_id, final_video_url)
+        print(f"[BACKGROUND TASK] Updated DynamoDB with final video URL")
+        
+        # Send webhook notification
+        print(f"[BACKGROUND TASK] Sending webhook notification...")
+        webhook_sent = await send_webhook(project_id, "final_video", "done")
+        if webhook_sent:
+            print(f"[BACKGROUND TASK] Full video generation completed successfully")
+        else:
+            print(f"[BACKGROUND TASK] Full video generation completed but webhook failed")
 
     except Exception as e:
         # Handle error
