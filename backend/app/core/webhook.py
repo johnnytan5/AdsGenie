@@ -24,6 +24,8 @@ async def send_webhook(
     """
     try:
         webhook_url = f"{settings.FRONTEND_URL}/api/webhooks/project-update"
+        print(f"[WEBHOOK] Attempting to send webhook to {webhook_url}")
+        print(f"[WEBHOOK] Payload: project_id={project_id}, task_type={task_type}, status={status}")
         
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.post(
@@ -35,8 +37,17 @@ async def send_webhook(
                 },
             )
             response.raise_for_status()
+            print(f"[WEBHOOK] Webhook sent successfully, status code: {response.status_code}")
             return True
+    except httpx.TimeoutException as e:
+        print(f"[WEBHOOK] Failed to send webhook for {task_type} (project {project_id}): Timeout - {e}")
+        return False
+    except httpx.HTTPStatusError as e:
+        print(f"[WEBHOOK] Failed to send webhook for {task_type} (project {project_id}): HTTP {e.response.status_code} - {e.response.text}")
+        return False
     except Exception as e:
         # Log error but don't fail the task
-        print(f"Failed to send webhook for {task_type} (project {project_id}): {e}")
+        import traceback
+        print(f"[WEBHOOK] Failed to send webhook for {task_type} (project {project_id}): {type(e).__name__} - {e}")
+        print(f"[WEBHOOK] Traceback: {traceback.format_exc()}")
         return False

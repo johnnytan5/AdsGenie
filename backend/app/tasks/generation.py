@@ -20,7 +20,7 @@ from app.core.webhook import send_webhook
 async def generate_global_character_image_task(
     project_id: str,
     description: str,
-    sketch_s3_url: str = "",
+    sketch_s3_url: str,
 ) -> None:
     """
     Background task to generate image for global character.
@@ -28,7 +28,7 @@ async def generate_global_character_image_task(
     Args:
         project_id: Project ID
         description: Character description
-        sketch_s3_url: Sketch S3 URL (optional, can be empty for text-only generation)
+        sketch_s3_url: Sketch S3 URL (can be empty string for text-only generation)
     """
     print(f"[BACKGROUND TASK] Starting character image generation for project {project_id}")
     print(f"[BACKGROUND TASK] Description: {description[:100]}")
@@ -58,8 +58,11 @@ async def generate_global_character_image_task(
             
             # Send webhook notification
             print(f"[BACKGROUND TASK] Sending webhook notification...")
-            await send_webhook(project_id, "global_character", "done")
-            print(f"[BACKGROUND TASK] Character image generation completed successfully")
+            webhook_sent = await send_webhook(project_id, "global_character", "done")
+            if webhook_sent:
+                print(f"[BACKGROUND TASK] Character image generation completed successfully")
+            else:
+                print(f"[BACKGROUND TASK] Character image generation completed but webhook failed")
         else:
             error_msg = result.get("error", "Unknown error")
             print(f"[BACKGROUND TASK] Image generation failed: {error_msg}")
@@ -69,6 +72,8 @@ async def generate_global_character_image_task(
     except Exception as e:
         # Log error but don't fail silently
         print(f"Error generating global character image: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         # Send webhook with failed status
         await send_webhook(project_id, "global_character", "failed")
 
@@ -76,7 +81,7 @@ async def generate_global_character_image_task(
 async def generate_global_setting_image_task(
     project_id: str,
     description: str,
-    sketch_s3_url: str = "",
+    sketch_s3_url: str,
 ) -> None:
     """
     Background task to generate image for global setting.
@@ -84,35 +89,52 @@ async def generate_global_setting_image_task(
     Args:
         project_id: Project ID
         description: Setting description
-        sketch_s3_url: Sketch S3 URL (optional, can be empty for text-only generation)
+        sketch_s3_url: Sketch S3 URL (can be empty string for text-only generation)
     """
+    print(f"[BACKGROUND TASK] Starting setting image generation for project {project_id}")
+    print(f"[BACKGROUND TASK] Description: {description[:100]}")
+    print(f"[BACKGROUND TASK] Sketch URL: {sketch_s3_url or 'None'}")
     try:
         # Generate image using NanoBanana (text-and-image-to-image or text-to-image)
+        print(f"[BACKGROUND TASK] Calling generate_image_nanobanana...")
         result = await generate_image_nanobanana(
             description=description,
             sketch_url=sketch_s3_url if sketch_s3_url else None,
             global_character_url=None,
             global_setting_url=None,
         )
+        print(f"[BACKGROUND TASK] Generation result: success={result.get('success')}, error={result.get('error', 'None')}")
 
         if result.get("success") and result.get("image_bytes"):
+            print(f"[BACKGROUND TASK] Image generated successfully, uploading to S3...")
             # Upload generated image directly to S3
             image_bytes = result["image_bytes"]
             s3_key = generate_s3_key(project_id, "setting_image")
             s3_url = upload_file_to_s3(image_bytes, s3_key, content_type="image/png")
+            print(f"[BACKGROUND TASK] Image uploaded to S3: {s3_url}")
 
             # Update global setting with generated image URL
             update_global_setting_s3_urls(project_id, generated_image_s3_url=s3_url)
+            print(f"[BACKGROUND TASK] Updated DynamoDB with image URL")
             
             # Send webhook notification
-            await send_webhook(project_id, "global_setting", "done")
+            print(f"[BACKGROUND TASK] Sending webhook notification...")
+            webhook_sent = await send_webhook(project_id, "global_setting", "done")
+            if webhook_sent:
+                print(f"[BACKGROUND TASK] Setting image generation completed successfully")
+            else:
+                print(f"[BACKGROUND TASK] Setting image generation completed but webhook failed")
         else:
+            error_msg = result.get("error", "Unknown error")
+            print(f"[BACKGROUND TASK] Image generation failed: {error_msg}")
             # Send webhook with failed status
             await send_webhook(project_id, "global_setting", "failed")
 
     except Exception as e:
         # Log error but don't fail silently
         print(f"Error generating global setting image: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         # Send webhook with failed status
         await send_webhook(project_id, "global_setting", "failed")
 

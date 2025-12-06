@@ -5,16 +5,9 @@ from fastapi import APIRouter, HTTPException, status, UploadFile, File, Backgrou
 from typing import Optional
 import json
 
-from app.schemas.global_settings import (
-    GlobalUpdateRequest,
-    GlobalUpdateResponse,
-    GlobalCharacterUpdate,
-    GlobalSettingUpdate,
-    GlobalCharacter,
-    GlobalSetting,
-)
+from app.schemas.global_settings import GlobalUpdateRequest, GlobalUpdateResponse, GlobalCharacterUpdate, GlobalSettingUpdate
 from app.crud import project as crud_project
-from app.core.s3 import upload_file_to_s3, delete_file_from_s3, generate_s3_key
+from app.core.s3 import upload_file_to_s3, delete_file_from_s3, generate_s3_key, get_presigned_url_from_s3_url
 from app.tasks.generation import (
     generate_global_character_image_task,
     generate_global_setting_image_task,
@@ -41,25 +34,35 @@ async def update_global_settings(
         )
 
     # Parse JSON form fields (handle empty strings and None)
+    # If character/setting field is provided (even if empty), it means generate button was pressed
     character_update = None
-    if character and character.strip() and character != "null":
+    print(f"[DEBUG] Received character form field: {character}")
+    if character and character.strip() and character != "null" and character != "undefined":
         try:
             character_data = json.loads(character)
-            if character_data:  # Only create update if data is not empty
-                character_update = GlobalCharacterUpdate(**character_data)
+            # Always create update object if JSON is provided (even if fields are empty)
+            # This indicates the generate button was pressed
+            character_update = GlobalCharacterUpdate(**character_data)
+            print(f"[DEBUG] Parsed character_update: name='{character_update.name}', description='{character_update.description}'")
         except (json.JSONDecodeError, TypeError, ValueError) as e:
             # Log error but don't fail - just skip character update
             print(f"Error parsing character JSON: {e}, raw value: {character[:100]}")
 
     setting_update = None
-    if setting and setting.strip() and setting != "null":
+    print(f"[DEBUG] Received setting form field: {setting}")
+    if setting and setting.strip() and setting != "null" and setting != "undefined":
         try:
             setting_data = json.loads(setting)
-            if setting_data:  # Only create update if data is not empty
-                setting_update = GlobalSettingUpdate(**setting_data)
+            # Always create update object if JSON is provided (even if fields are empty)
+            # This indicates the generate button was pressed
+            setting_update = GlobalSettingUpdate(**setting_data)
+            print(f"[DEBUG] Parsed setting_update: name='{setting_update.name}', description='{setting_update.description}'")
         except (json.JSONDecodeError, TypeError, ValueError) as e:
             # Log error but don't fail - just skip setting update
             print(f"Error parsing setting JSON: {e}, raw value: {setting[:100]}")
+    
+    print(f"[DEBUG] Final character_update: {character_update}")
+    print(f"[DEBUG] Final setting_update: {setting_update}")
 
     # Handle character sketch upload
     character_sketch_s3_url = None
@@ -98,72 +101,84 @@ async def update_global_settings(
             detail="Project not found",
         )
 
-    # Generate images if character update was provided OR if character sketch was uploaded
-    # This allows generation to be triggered by either updating description or uploading sketch
-    global_character = updated_project.get("global_character") or {}
-    character_description = global_character.get("description")
-    character_has_sketch = character_sketch_s3_url or global_character.get("sketch_s3_url")
-    
-    # Trigger generation if:
-    # 1. Character update was provided (description changed), OR
-    # 2. Character sketch was uploaded, OR  
-    # 3. We have a description (even if no sketch - text-only generation)
-    # Note: When user clicks "Generate Character Image", character_update may be None
-    # if description hasn't changed, but we still want to generate if description exists
+    # Generate images if sketches were uploaded OR if character_update was provided (button was pressed)
+    # If character_update is provided, it means the generate button was pressed - always trigger generation
     should_generate_character = (
-        character_update is not None or  # Description was updated
-        character_sketch_s3_url or  # Sketch was uploaded
-        (character_description and character_description.strip())  # Description exists (text-only generation)
+        character_sketch_s3_url is not None or  # Sketch was uploaded
+        character_update is not None  # Generate button was pressed (even if description is empty)
     )
     
     if should_generate_character:
-        description = character_description or "Generate a high-quality character image"
+        global_character = updated_project.get("global_character") or {}
+        # Use description from update, or from existing character, or default
+        description = (
+            (character_update and character_update.description and character_update.description.strip()) or
+            global_character.get("description") or 
+            "Generate a high-quality character image"
+        )
         sketch_url = character_sketch_s3_url or global_character.get("sketch_s3_url") or ""
         
-        # Only trigger if we have at least a description
-        if description and description.strip():
-            print(f"Triggering character image generation for project {project_id} with description: {description[:100]}")
-            # Add background task to generate character image using Google GenAI
-            background_tasks.add_task(
-                generate_global_character_image_task,
-                project_id=project_id,
-                description=description,
-                sketch_s3_url=sketch_url,
-            )
+        print(f"[DEBUG] Triggering character image generation for project {project_id}")
+        print(f"[DEBUG] Description: {description[:100]}")
+        print(f"[DEBUG] Sketch URL: {sketch_url or 'None'}")
+        
+        # Add background task to generate character image using Google GenAI
+        background_tasks.add_task(
+            generate_global_character_image_task,
+            project_id=project_id,
+            description=description,
+            sketch_s3_url=sketch_url,
+        )
 
-    # Generate images if setting update was provided OR if setting sketch was uploaded
-    global_setting = updated_project.get("global_setting") or {}
-    setting_description = global_setting.get("description")
-    setting_has_sketch = setting_sketch_s3_url or global_setting.get("sketch_s3_url")
-    
-    # Trigger generation if:
-    # 1. Setting update was provided (description changed), OR
-    # 2. Setting sketch was uploaded, OR
-    # 3. We have a description (even if no sketch - text-only generation)
+    # Generate images if sketches were uploaded OR if setting_update was provided (button was pressed)
+    # If setting_update is provided, it means the generate button was pressed - always trigger generation
     should_generate_setting = (
-        setting_update is not None or  # Description was updated
-        setting_sketch_s3_url or  # Sketch was uploaded
-        (setting_description and setting_description.strip())  # Description exists (text-only generation)
+        setting_sketch_s3_url is not None or  # Sketch was uploaded
+        setting_update is not None  # Generate button was pressed (even if description is empty)
     )
     
     if should_generate_setting:
-        description = setting_description or "Generate a high-quality setting image"
+        global_setting = updated_project.get("global_setting") or {}
+        # Use description from update, or from existing setting, or default
+        description = (
+            (setting_update and setting_update.description and setting_update.description.strip()) or
+            global_setting.get("description") or 
+            "Generate a high-quality setting image"
+        )
         sketch_url = setting_sketch_s3_url or global_setting.get("sketch_s3_url") or ""
         
-        # Only trigger if we have at least a description
-        if description and description.strip():
-            print(f"Triggering setting image generation for project {project_id} with description: {description[:100]}")
-            # Add background task to generate setting image using Google GenAI
-            background_tasks.add_task(
-                generate_global_setting_image_task,
-                project_id=project_id,
-                description=description,
-                sketch_s3_url=sketch_url,
-            )
+        print(f"[DEBUG] Triggering setting image generation for project {project_id}")
+        print(f"[DEBUG] Description: {description[:100]}")
+        print(f"[DEBUG] Sketch URL: {sketch_url or 'None'}")
+        
+        # Add background task to generate setting image using Google GenAI
+        background_tasks.add_task(
+            generate_global_setting_image_task,
+            project_id=project_id,
+            description=description,
+            sketch_s3_url=sketch_url,
+        )
 
     # Convert None values to None, or create schema objects from dicts
     global_character = updated_project.get("global_character")
     global_setting = updated_project.get("global_setting")
+    
+    from app.schemas.global_settings import GlobalCharacter, GlobalSetting
+    
+    # Convert S3 URLs to presigned URLs for frontend access
+    if global_character:
+        global_character = global_character.copy()
+        if global_character.get("sketch_s3_url"):
+            global_character["sketch_s3_url"] = get_presigned_url_from_s3_url(global_character["sketch_s3_url"])
+        if global_character.get("generated_image_s3_url"):
+            global_character["generated_image_s3_url"] = get_presigned_url_from_s3_url(global_character["generated_image_s3_url"])
+    
+    if global_setting:
+        global_setting = global_setting.copy()
+        if global_setting.get("sketch_s3_url"):
+            global_setting["sketch_s3_url"] = get_presigned_url_from_s3_url(global_setting["sketch_s3_url"])
+        if global_setting.get("generated_image_s3_url"):
+            global_setting["generated_image_s3_url"] = get_presigned_url_from_s3_url(global_setting["generated_image_s3_url"])
     
     return GlobalUpdateResponse(
         global_character=GlobalCharacter(**global_character) if global_character else None,

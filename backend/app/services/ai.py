@@ -88,14 +88,26 @@ async def generate_image_nanobanana(
         for part in response.parts:
             if part.inline_data is not None:
                 image = part.as_image()
-                # Convert to bytes
-                img_bytes = BytesIO()
-                image.save(img_bytes, format="PNG")
-                img_bytes.seek(0)
+                
+                # Convert to bytes - Google GenAI image might need special handling
+                # Try saving to temp file first, then read as bytes (most reliable method)
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                    tmp_path = tmp_file.name
+                
+                try:
+                    # Save to file (this works according to the guide)
+                    image.save(tmp_path)
+                    # Read the file back as bytes
+                    with open(tmp_path, 'rb') as f:
+                        image_bytes = f.read()
+                finally:
+                    # Clean up temp file
+                    if os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
                 
                 return {
                     "success": True,
-                    "image_bytes": img_bytes.getvalue(),
+                    "image_bytes": image_bytes,
                 }
         
         return {
