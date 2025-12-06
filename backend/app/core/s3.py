@@ -4,7 +4,7 @@ S3 client and utilities.
 import boto3
 from botocore.config import Config
 from typing import Optional, BinaryIO
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from app.core.config import settings
 
@@ -142,3 +142,92 @@ def generate_s3_key(project_id: str, file_type: str, scene_id: Optional[str] = N
             return f"projects/{project_id}/final_video_with_audio.mp4"
 
     raise ValueError(f"Unknown file type: {file_type}")
+
+
+def download_file_from_s3(s3_key: str) -> bytes:
+    """
+    Download a file from S3 directly using boto3.
+
+    Args:
+        s3_key: S3 key (path) of the file to download
+
+    Returns:
+        File content as bytes
+    """
+    s3_client = get_s3_client()
+    response = s3_client.get_object(
+        Bucket=settings.S3_BUCKET_NAME,
+        Key=s3_key,
+    )
+    return response["Body"].read()
+
+
+def extract_s3_key_from_url(s3_url: str) -> Optional[str]:
+    """
+    Extract S3 key from an S3 URL.
+
+    Args:
+        s3_url: S3 URL (e.g., https://bucket.s3.region.amazonaws.com/key/path)
+
+    Returns:
+        S3 key if URL is an S3 URL, None otherwise
+    """
+    # Check if it's an S3 URL
+    if settings.S3_BUCKET_NAME in s3_url:
+        # Extract the key part after the bucket name
+        if f"{settings.S3_BUCKET_NAME}/" in s3_url:
+            return s3_url.split(f"{settings.S3_BUCKET_NAME}/", 1)[1]
+        elif f"{settings.S3_BUCKET_NAME}.s3." in s3_url:
+            parts = s3_url.split(f"{settings.S3_BUCKET_NAME}.s3.", 1)
+            if len(parts) > 1 and "/" in parts[1]:
+                return parts[1].split("/", 1)[1]
+    return None
+
+
+def generate_presigned_url(s3_key: str, expiration: int = 3600) -> str:
+    """
+    Generate a presigned URL for an S3 object that allows temporary public access.
+
+    Args:
+        s3_key: S3 key (path) of the file
+        expiration: URL expiration time in seconds (default: 1 hour)
+
+    Returns:
+        Presigned URL that allows temporary public access to the S3 object
+    """
+    s3_client = get_s3_client()
+    
+    try:
+        url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': settings.S3_BUCKET_NAME,
+                'Key': s3_key
+            },
+            ExpiresIn=expiration
+        )
+        return url
+    except Exception as e:
+        # If presigned URL generation fails, fall back to regular URL
+        print(f"Failed to generate presigned URL for {s3_key}: {e}")
+        if settings.S3_ENDPOINT_URL:
+            return f"{settings.S3_ENDPOINT_URL}/{settings.S3_BUCKET_NAME}/{s3_key}"
+        else:
+            return f"https://{settings.S3_BUCKET_NAME}.s3.{settings.AWS_REGION}.amazonaws.com/{s3_key}"
+
+
+def get_presigned_url_from_s3_url(s3_url: str, expiration: int = 3600) -> str:
+    """
+    Convert an S3 URL to a presigned URL if it's an S3 URL, otherwise return as-is.
+
+    Args:
+        s3_url: S3 URL or regular URL
+        expiration: URL expiration time in seconds (default: 1 hour)
+
+    Returns:
+        Presigned URL if it's an S3 URL, original URL otherwise
+    """
+    s3_key = extract_s3_key_from_url(s3_url)
+    if s3_key:
+        return generate_presigned_url(s3_key, expiration)
+    return s3_url

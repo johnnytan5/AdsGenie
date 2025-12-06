@@ -30,8 +30,11 @@ async def generate_scene_image(
     background_tasks: BackgroundTasks,
 ):
     """Generate image for a scene."""
+    print(f"[GENERATION ENDPOINT] Received scene image generation request for project {project_id}, scene {scene_id}")
+    
     project = crud_project.get_project(project_id)
     if not project:
+        print(f"[GENERATION ENDPOINT] Project {project_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
@@ -40,22 +43,52 @@ async def generate_scene_image(
     scenes = project.get("scenes", [])
     scene = next((s for s in scenes if s["scene_id"] == scene_id), None)
     if not scene:
+        print(f"[GENERATION ENDPOINT] Scene {scene_id} not found in project {project_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Scene not found",
         )
+
+    # Use image_description for image generation (separate from scene description)
+    scene_image_description = scene.get("image_description", "")
+    scene_sketch = scene.get("sketch_s3_url")
+    
+    # Validate that scene has either a sketch or a valid image_description for image generation
+    has_sketch = bool(scene_sketch)
+    has_valid_image_description = scene_image_description and scene_image_description.strip() != "" and scene_image_description != "New Scene"
+    
+    if not has_sketch and not has_valid_image_description:
+        print(f"[GENERATION ENDPOINT] Scene has no sketch and invalid image_description: '{scene_image_description}'")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Scene must have either a sketch/image or a valid image description to generate an image",
+        )
+    
+    # Use image_description if valid, otherwise pass None (task will use default for sketch-based generation)
+    description_to_use = scene_image_description if has_valid_image_description else None
+    
+    # Get toggle values from scene
+    use_global_character = scene.get("use_global_character_for_image", False)
+    use_global_setting = scene.get("use_global_setting_for_image", False)
+    
+    print(f"[GENERATION ENDPOINT] Scene image_description: {description_to_use[:100] if description_to_use else 'None (will use default for sketch)'}")
+    print(f"[GENERATION ENDPOINT] Scene sketch URL: {scene_sketch or 'None'}")
+    print(f"[GENERATION ENDPOINT] Use global character: {use_global_character}, Use global setting: {use_global_setting}")
+    print(f"[GENERATION ENDPOINT] Adding background task...")
 
     # Add background task
     background_tasks.add_task(
         generate_scene_image_task,
         project_id=project_id,
         scene_id=scene_id,
-        description=scene["description"],
-        sketch_s3_url=scene.get("sketch_s3_url"),
-        use_global_character=request.use_global_character,
-        use_global_setting=request.use_global_setting,
+        description=description_to_use or "",  # Pass empty string if None, task will handle it
+        sketch_s3_url=scene_sketch,
+        use_global_character=use_global_character,
+        use_global_setting=use_global_setting,
+        aspect_ratio=project.get("aspect_ratio", "16:9"),
     )
 
+    print(f"[GENERATION ENDPOINT] Background task added, returning response")
     return ImageGenerationResponse(
         scene_id=scene_id,
         generated_image_s3_url=scene.get("generated_image_s3_url") or "",
@@ -86,11 +119,27 @@ async def generate_scene_video(
             detail="Scene not found",
         )
 
+    # Validate that scene has a generated image
     if not scene.get("generated_image_s3_url"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Scene must have a generated image before generating video",
         )
+    
+    # Validate that scene has a valid description for video generation
+    scene_description = scene.get("description", "")
+    if not scene_description or scene_description.strip() == "" or scene_description == "New Scene":
+        print(f"[GENERATION ENDPOINT] Invalid description for video: '{scene_description}'. Scene must have a valid description for video generation.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Scene must have a valid description (not empty or 'New Scene') to generate a video",
+        )
+
+    # Get toggle values from scene (not from request)
+    use_global_character = scene.get("use_global_character_for_video", False)
+    use_global_setting = scene.get("use_global_setting_for_video", False)
+    
+    print(f"[GENERATION ENDPOINT] Scene video generation - Use global character: {use_global_character}, Use global setting: {use_global_setting}")
 
     # Add background task
     background_tasks.add_task(
@@ -100,9 +149,9 @@ async def generate_scene_video(
         image_s3_url=scene["generated_image_s3_url"],
         aspect_ratio=request.aspect_ratio,
         voiceover_text=request.voiceover_text,
-        duration=scene.get("duration", 5),
-        use_global_character=request.use_global_character,
-        use_global_setting=request.use_global_setting,
+        duration=scene.get("duration", 8),  # Default to 8 seconds (valid Veo 3.1 duration)
+        use_global_character=use_global_character,
+        use_global_setting=use_global_setting,
     )
 
     return VideoGenerationResponse(

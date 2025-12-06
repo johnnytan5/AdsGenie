@@ -181,41 +181,53 @@ def update_global_settings(
     expression_attribute_values = {}
     expression_attribute_names = {}
 
-    # Handle character update - initialize global_character if it doesn't exist
     if character:
-        if character.description is not None:
-            existing_character = project.get("global_character") or {}
-            # Check if global_character exists, if not initialize it
-            if not existing_character or existing_character is None:
-                # Initialize with description, preserving any existing fields
-                char_init = {"description": character.description}
-                if isinstance(existing_character, dict):
-                    char_init.update({k: v for k, v in existing_character.items() if k != "description"})
+        # Check if global_character exists, if not initialize it
+        existing_character = project.get("global_character")
+        if not existing_character:
+            # Initialize global_character as a new object
+            char_data = {}
+            if character.description is not None:
+                char_data["description"] = character.description
+            if character.name is not None:
+                char_data["name"] = character.name
+            if char_data:
                 update_expression_parts.append("global_character = :char_init")
-                expression_attribute_values[":char_init"] = char_init
-            else:
-                # Update existing nested field
+                expression_attribute_values[":char_init"] = char_data
+        else:
+            # Update existing nested fields
+            if character.description is not None:
                 update_expression_parts.append("global_character.#char_desc = :char_desc")
                 expression_attribute_names["#char_desc"] = "description"
                 expression_attribute_values[":char_desc"] = character.description
+            if character.name is not None:
+                update_expression_parts.append("global_character.#char_name = :char_name")
+                expression_attribute_names["#char_name"] = "name"
+                expression_attribute_values[":char_name"] = character.name
 
-    # Handle setting update - initialize global_setting if it doesn't exist
     if setting:
-        if setting.description is not None:
-            existing_setting = project.get("global_setting") or {}
-            # Check if global_setting exists, if not initialize it
-            if not existing_setting or existing_setting is None:
-                # Initialize with description, preserving any existing fields
-                set_init = {"description": setting.description}
-                if isinstance(existing_setting, dict):
-                    set_init.update({k: v for k, v in existing_setting.items() if k != "description"})
+        # Check if global_setting exists, if not initialize it
+        existing_setting = project.get("global_setting")
+        if not existing_setting:
+            # Initialize global_setting as a new object
+            set_data = {}
+            if setting.description is not None:
+                set_data["description"] = setting.description
+            if setting.name is not None:
+                set_data["name"] = setting.name
+            if set_data:
                 update_expression_parts.append("global_setting = :set_init")
-                expression_attribute_values[":set_init"] = set_init
-            else:
-                # Update existing nested field
+                expression_attribute_values[":set_init"] = set_data
+        else:
+            # Update existing nested fields
+            if setting.description is not None:
                 update_expression_parts.append("global_setting.#set_desc = :set_desc")
                 expression_attribute_names["#set_desc"] = "description"
                 expression_attribute_values[":set_desc"] = setting.description
+            if setting.name is not None:
+                update_expression_parts.append("global_setting.#set_name = :set_name")
+                expression_attribute_names["#set_name"] = "name"
+                expression_attribute_values[":set_name"] = setting.name
 
     if not update_expression_parts:
         return project
@@ -378,10 +390,19 @@ def add_scene(project_id: str, scene_data: SceneCreate, sketch_s3_url: Optional[
         "order": max_order + 1,
         "duration": scene_data.duration,
         "description": scene_data.description,
+        "image_description": None,  # Initialize as None, can be set later
         "sketch_s3_url": sketch_s3_url,
         "generated_image_s3_url": None,
         "generated_video_s3_url": None,
         "status": "pending",
+        "voiceover_enabled": False,
+        "voiceover_text": None,
+        "voiceover_gender": "male",
+        "background_music_enabled": False,
+        "use_global_character_for_image": False,
+        "use_global_setting_for_image": False,
+        "use_global_character_for_video": False,
+        "use_global_setting_for_video": False,
     }
 
     scenes.append(new_scene)
@@ -427,6 +448,31 @@ def update_scene(
         scene["sketch_s3_url"] = sketch_s3_url
         # Reset status to pending if sketch changed
         scene["status"] = "pending"
+    # Update image_description field (separate from description)
+    if scene_data.image_description is not None:
+        scene["image_description"] = scene_data.image_description
+    
+    # Update image generation settings
+    if scene_data.use_global_character_for_image is not None:
+        scene["use_global_character_for_image"] = scene_data.use_global_character_for_image
+    if scene_data.use_global_setting_for_image is not None:
+        scene["use_global_setting_for_image"] = scene_data.use_global_setting_for_image
+    
+    # Update video generation settings
+    if scene_data.use_global_character_for_video is not None:
+        scene["use_global_character_for_video"] = scene_data.use_global_character_for_video
+    if scene_data.use_global_setting_for_video is not None:
+        scene["use_global_setting_for_video"] = scene_data.use_global_setting_for_video
+    
+    # Update audio fields
+    if scene_data.voiceover_enabled is not None:
+        scene["voiceover_enabled"] = scene_data.voiceover_enabled
+    if scene_data.voiceover_text is not None:
+        scene["voiceover_text"] = scene_data.voiceover_text
+    if scene_data.voiceover_gender is not None:
+        scene["voiceover_gender"] = scene_data.voiceover_gender
+    if scene_data.background_music_enabled is not None:
+        scene["background_music_enabled"] = scene_data.background_music_enabled
 
     table = get_projects_table()
     try:

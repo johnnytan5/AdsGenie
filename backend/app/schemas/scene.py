@@ -16,7 +16,16 @@ class SceneUpdate(BaseModel):
     """Schema for updating a scene."""
 
     description: Optional[str] = Field(None, min_length=1)
+    image_description: Optional[str] = Field(None)  # Separate field for image generation
     duration: Optional[int] = Field(None, ge=1, le=60)
+    voiceover_enabled: Optional[bool] = None
+    voiceover_text: Optional[str] = None
+    voiceover_gender: Optional[str] = Field(None, pattern="^(male|female)$")
+    background_music_enabled: Optional[bool] = None
+    use_global_character_for_image: Optional[bool] = None
+    use_global_setting_for_image: Optional[bool] = None
+    use_global_character_for_video: Optional[bool] = None
+    use_global_setting_for_video: Optional[bool] = None
 
 
 class SceneResponse(BaseModel):
@@ -26,10 +35,19 @@ class SceneResponse(BaseModel):
     order: int
     duration: int
     description: str
+    image_description: Optional[str] = None  # Separate field for image generation
     sketch_s3_url: Optional[str] = None
     generated_image_s3_url: Optional[str] = None
     generated_video_s3_url: Optional[str] = None
     status: str = Field(..., pattern="^(pending|processing|done|failed)$")
+    voiceover_enabled: Optional[bool] = False
+    voiceover_text: Optional[str] = None
+    voiceover_gender: Optional[str] = Field(None, pattern="^(male|female)$")
+    background_music_enabled: Optional[bool] = False
+    use_global_character_for_image: Optional[bool] = False
+    use_global_setting_for_image: Optional[bool] = False
+    use_global_character_for_video: Optional[bool] = False
+    use_global_setting_for_video: Optional[bool] = False
 
     class Config:
         from_attributes = True

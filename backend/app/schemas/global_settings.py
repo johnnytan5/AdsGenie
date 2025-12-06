@@ -8,6 +8,7 @@ from pydantic import BaseModel
 class GlobalCharacter(BaseModel):
     """Global character schema."""
 
+    name: Optional[str] = None
     description: Optional[str] = None
     sketch_s3_url: Optional[str] = None
     generated_image_s3_url: Optional[str] = None
@@ -19,6 +20,7 @@ class GlobalCharacter(BaseModel):
 class GlobalSetting(BaseModel):
     """Global setting schema."""
 
+    name: Optional[str] = None
     description: Optional[str] = None
     sketch_s3_url: Optional[str] = None
     generated_image_s3_url: Optional[str] = None
@@ -30,12 +32,14 @@ class GlobalSetting(BaseModel):
 class GlobalCharacterUpdate(BaseModel):
     """Schema for updating global character."""
 
+    name: Optional[str] = None
     description: Optional[str] = None
 
 
 class GlobalSettingUpdate(BaseModel):
     """Schema for updating global setting."""
 
+    name: Optional[str] = None
     description: Optional[str] = None
 
 

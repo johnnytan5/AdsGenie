@@ -12,15 +12,15 @@ from app.crud.project import (
     update_global_character_s3_urls,
     update_global_setting_s3_urls,
 )
-from app.services.ai import generate_image_nanobanana, generate_video_veo3
-from app.core.s3 import upload_file_to_s3, generate_s3_key
+from app.services.ai import generate_image_nanobanana, generate_image_gemini3_pro, generate_video_veo3
+from app.core.s3 import upload_file_to_s3, generate_s3_key, get_presigned_url_from_s3_url
 from app.core.webhook import send_webhook
 
 
 async def generate_global_character_image_task(
     project_id: str,
     description: str,
-    sketch_s3_url: str = "",
+    sketch_s3_url: str,
 ) -> None:
     """
     Background task to generate image for global character.
@@ -28,7 +28,7 @@ async def generate_global_character_image_task(
     Args:
         project_id: Project ID
         description: Character description
-        sketch_s3_url: Sketch S3 URL (optional, can be empty for text-only generation)
+        sketch_s3_url: Sketch S3 URL (can be empty string for text-only generation)
     """
     print(f"[BACKGROUND TASK] Starting character image generation for project {project_id}")
     print(f"[BACKGROUND TASK] Description: {description[:100]}")
@@ -58,8 +58,11 @@ async def generate_global_character_image_task(
             
             # Send webhook notification
             print(f"[BACKGROUND TASK] Sending webhook notification...")
-            await send_webhook(project_id, "global_character", "done")
-            print(f"[BACKGROUND TASK] Character image generation completed successfully")
+            webhook_sent = await send_webhook(project_id, "global_character", "done")
+            if webhook_sent:
+                print(f"[BACKGROUND TASK] Character image generation completed successfully")
+            else:
+                print(f"[BACKGROUND TASK] Character image generation completed but webhook failed")
         else:
             error_msg = result.get("error", "Unknown error")
             print(f"[BACKGROUND TASK] Image generation failed: {error_msg}")
@@ -69,6 +72,8 @@ async def generate_global_character_image_task(
     except Exception as e:
         # Log error but don't fail silently
         print(f"Error generating global character image: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         # Send webhook with failed status
         await send_webhook(project_id, "global_character", "failed")
 
@@ -76,7 +81,7 @@ async def generate_global_character_image_task(
 async def generate_global_setting_image_task(
     project_id: str,
     description: str,
-    sketch_s3_url: str = "",
+    sketch_s3_url: str,
 ) -> None:
     """
     Background task to generate image for global setting.
@@ -84,35 +89,52 @@ async def generate_global_setting_image_task(
     Args:
         project_id: Project ID
         description: Setting description
-        sketch_s3_url: Sketch S3 URL (optional, can be empty for text-only generation)
+        sketch_s3_url: Sketch S3 URL (can be empty string for text-only generation)
     """
+    print(f"[BACKGROUND TASK] Starting setting image generation for project {project_id}")
+    print(f"[BACKGROUND TASK] Description: {description[:100]}")
+    print(f"[BACKGROUND TASK] Sketch URL: {sketch_s3_url or 'None'}")
     try:
         # Generate image using NanoBanana (text-and-image-to-image or text-to-image)
+        print(f"[BACKGROUND TASK] Calling generate_image_nanobanana...")
         result = await generate_image_nanobanana(
             description=description,
             sketch_url=sketch_s3_url if sketch_s3_url else None,
             global_character_url=None,
             global_setting_url=None,
         )
+        print(f"[BACKGROUND TASK] Generation result: success={result.get('success')}, error={result.get('error', 'None')}")
 
         if result.get("success") and result.get("image_bytes"):
+            print(f"[BACKGROUND TASK] Image generated successfully, uploading to S3...")
             # Upload generated image directly to S3
             image_bytes = result["image_bytes"]
             s3_key = generate_s3_key(project_id, "setting_image")
             s3_url = upload_file_to_s3(image_bytes, s3_key, content_type="image/png")
+            print(f"[BACKGROUND TASK] Image uploaded to S3: {s3_url}")
 
             # Update global setting with generated image URL
             update_global_setting_s3_urls(project_id, generated_image_s3_url=s3_url)
+            print(f"[BACKGROUND TASK] Updated DynamoDB with image URL")
             
             # Send webhook notification
-            await send_webhook(project_id, "global_setting", "done")
+            print(f"[BACKGROUND TASK] Sending webhook notification...")
+            webhook_sent = await send_webhook(project_id, "global_setting", "done")
+            if webhook_sent:
+                print(f"[BACKGROUND TASK] Setting image generation completed successfully")
+            else:
+                print(f"[BACKGROUND TASK] Setting image generation completed but webhook failed")
         else:
+            error_msg = result.get("error", "Unknown error")
+            print(f"[BACKGROUND TASK] Image generation failed: {error_msg}")
             # Send webhook with failed status
             await send_webhook(project_id, "global_setting", "failed")
 
     except Exception as e:
         # Log error but don't fail silently
         print(f"Error generating global setting image: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         # Send webhook with failed status
         await send_webhook(project_id, "global_setting", "failed")
 
@@ -122,68 +144,132 @@ async def generate_scene_image_task(
     scene_id: str,
     description: str,
     sketch_s3_url: Optional[str],
-    use_global_character: bool,
-    use_global_setting: bool,
+    use_global_character: bool = False,
+    use_global_setting: bool = False,
+    aspect_ratio: str = "16:9",
 ) -> None:
     """
     Background task to generate image for a scene.
+    
+    Uses Gemini 3 Pro Preview if global character/setting toggles are enabled,
+    otherwise uses NanoBanana (Gemini 2.5 Flash Image).
 
     Args:
         project_id: Project ID
         scene_id: Scene ID
-        description: Scene description
+        description: Image description
         sketch_s3_url: Optional sketch S3 URL
-        use_global_character: Whether to use global character
-        use_global_setting: Whether to use global setting
+        use_global_character: Whether to use global character image
+        use_global_setting: Whether to use global setting image
+        aspect_ratio: Project aspect ratio for Gemini 3 Pro
     """
+    print(f"[BACKGROUND TASK] Starting scene image generation for project {project_id}, scene {scene_id}")
+    print(f"[BACKGROUND TASK] Description: {description[:100] if description else 'None'}")
+    print(f"[BACKGROUND TASK] Sketch URL: {sketch_s3_url or 'None'}")
+    print(f"[BACKGROUND TASK] Use global character: {use_global_character}, Use global setting: {use_global_setting}")
+    
     # Update status to processing
     update_scene_status(project_id, scene_id, "processing")
 
     try:
-        # Get project to access global settings
+        # Get project to access global settings and aspect ratio
         project = get_project(project_id)
         if not project:
+            print(f"[BACKGROUND TASK] Project {project_id} not found")
             update_scene_status(project_id, scene_id, "failed")
+            await send_webhook(project_id, f"scene_image_{scene_id}", "failed")
             return
 
-        global_character = project.get("global_character")
-        global_setting = project.get("global_setting")
+        # Use description if valid, otherwise use a default prompt for image generation
+        # (sketch is already validated in the endpoint)
+        if not description or description.strip() == "" or description == "New Scene":
+            # If no valid description but we have a sketch, use a generic prompt
+            if sketch_s3_url:
+                description = "Generate a high-quality image based on the provided sketch"
+                print(f"[BACKGROUND TASK] No valid description provided, using default prompt for sketch-based generation")
+            else:
+                # This shouldn't happen as endpoint validates, but handle gracefully
+                print(f"[BACKGROUND TASK] ERROR: No description or sketch available (should have been validated)")
+                update_scene_status(project_id, scene_id, "failed")
+                await send_webhook(project_id, f"scene_image_{scene_id}", "failed")
+                return
 
-        global_character_url = None
-        global_setting_url = None
-
-        if use_global_character and global_character:
-            global_character_url = global_character.get("generated_image_s3_url")
-
-        if use_global_setting and global_setting:
-            global_setting_url = global_setting.get("generated_image_s3_url")
-
-        # Generate image using NanoBanana
-        result = await generate_image_nanobanana(
-            description=description,
-            sketch_url=sketch_s3_url,
-            global_character_url=global_character_url,
-            global_setting_url=global_setting_url,
-        )
+        # Determine which model to use based on toggles
+        use_gemini3_pro = use_global_character or use_global_setting
+        
+        if use_gemini3_pro:
+            # Use Gemini 3 Pro Preview with reference images
+            print(f"[BACKGROUND TASK] Using Gemini 3 Pro Preview (multi-image support)")
+            
+            # Get global character and setting URLs if toggles are enabled
+            global_character_url = None
+            global_setting_url = None
+            
+            if use_global_character:
+                global_character = project.get("global_character")
+                if global_character:
+                    global_character_url = global_character.get("generated_image_s3_url")
+                    print(f"[BACKGROUND TASK] Using global character URL: {global_character_url or 'None'}")
+            
+            if use_global_setting:
+                global_setting = project.get("global_setting")
+                if global_setting:
+                    global_setting_url = global_setting.get("generated_image_s3_url")
+                    print(f"[BACKGROUND TASK] Using global setting URL: {global_setting_url or 'None'}")
+            
+            # Get project aspect ratio
+            project_aspect_ratio = project.get("aspect_ratio", "16:9")
+            print(f"[BACKGROUND TASK] Using aspect ratio: {project_aspect_ratio}")
+            
+            result = await generate_image_gemini3_pro(
+                description=description,
+                aspect_ratio=project_aspect_ratio,
+                sketch_url=sketch_s3_url,
+                global_character_url=global_character_url,
+                global_setting_url=global_setting_url,
+            )
+        else:
+            # Use NanoBanana (Gemini 2.5 Flash Image) - no global character/setting
+            print(f"[BACKGROUND TASK] Using NanoBanana (Gemini 2.5 Flash Image)")
+            result = await generate_image_nanobanana(
+                description=description,
+                sketch_url=sketch_s3_url,
+                global_character_url=None,
+                global_setting_url=None,
+            )
+        print(f"[BACKGROUND TASK] Generation result: success={result.get('success')}, error={result.get('error', 'None')}")
 
         if result.get("success") and result.get("image_bytes"):
+            print(f"[BACKGROUND TASK] Image generated successfully, uploading to S3...")
             # Upload generated image directly to S3
             image_bytes = result["image_bytes"]
             s3_key = generate_s3_key(project_id, "generated_image", scene_id)
             s3_url = upload_file_to_s3(image_bytes, s3_key, content_type="image/png")
+            print(f"[BACKGROUND TASK] Image uploaded to S3: {s3_url}")
 
             # Update scene with generated image URL
             update_scene_generated_image(project_id, scene_id, s3_url)
+            print(f"[BACKGROUND TASK] Updated DynamoDB with image URL")
             
             # Send webhook notification
-            await send_webhook(project_id, f"scene_image_{scene_id}", "done")
+            print(f"[BACKGROUND TASK] Sending webhook notification...")
+            webhook_sent = await send_webhook(project_id, f"scene_image_{scene_id}", "done")
+            if webhook_sent:
+                print(f"[BACKGROUND TASK] Scene image generation completed successfully")
+            else:
+                print(f"[BACKGROUND TASK] Scene image generation completed but webhook failed")
         else:
             error_msg = result.get("error", "Unknown error")
+            print(f"[BACKGROUND TASK] Image generation failed: {error_msg}")
             update_scene_status(project_id, scene_id, "failed")
             # Send webhook with failed status
             await send_webhook(project_id, f"scene_image_{scene_id}", "failed")
 
     except Exception as e:
+        # Log error but don't fail silently
+        print(f"[BACKGROUND TASK] Error generating scene image: {e}")
+        import traceback
+        print(f"[BACKGROUND TASK] Traceback: {traceback.format_exc()}")
         update_scene_status(project_id, scene_id, "failed")
         # Send webhook with failed status
         await send_webhook(project_id, f"scene_image_{scene_id}", "failed")
@@ -208,12 +294,16 @@ async def generate_scene_video_task(
         image_s3_url: Scene image S3 URL (required)
         aspect_ratio: Video aspect ratio
         voiceover_text: Optional voiceover text
-        duration: Video duration
+        duration: Video duration (4, 6, or 8 seconds for Veo 3.1)
         use_global_character: Whether to use global character as reference
         use_global_setting: Whether to use global setting as reference
     """
     # Update status to processing
     update_scene_status(project_id, scene_id, "processing")
+    
+    print(f"[BACKGROUND TASK] Starting scene video generation for project {project_id}, scene {scene_id}")
+    print(f"[BACKGROUND TASK] Duration: {duration} seconds")
+    print(f"[BACKGROUND TASK] Use global character: {use_global_character}, Use global setting: {use_global_setting}")
 
     try:
         # Get project to access global settings
@@ -240,6 +330,7 @@ async def generate_scene_video_task(
         scene_description = scene.get("description", "Create a cinematic video based on this scene.") if scene else "Create a cinematic video based on this scene."
 
         # Generate video using VEO3
+        print(f"[BACKGROUND TASK] Generating video with duration: {duration} seconds")
         result = await generate_video_veo3(
             scene_image_url=image_s3_url,
             aspect_ratio=aspect_ratio,
@@ -249,26 +340,45 @@ async def generate_scene_video_task(
             global_character_url=global_character_url,
             global_setting_url=global_setting_url,
             prompt=scene_description,
+            duration=duration,
         )
 
         if result.get("success") and result.get("video_bytes"):
+            print(f"[BACKGROUND TASK] Video generated successfully, uploading to S3...")
             # Upload generated video directly to S3
             video_bytes = result["video_bytes"]
             s3_key = generate_s3_key(project_id, "generated_video", scene_id)
             s3_url = upload_file_to_s3(video_bytes, s3_key, content_type="video/mp4")
+            print(f"[BACKGROUND TASK] Video uploaded to S3: {s3_url}")
+
+            # Get presigned URL for frontend access
+            presigned_url = get_presigned_url_from_s3_url(s3_url)
+            print(f"[BACKGROUND TASK] Generated presigned URL: {presigned_url}")
 
             # Update scene with generated video URL
             update_scene_generated_video(project_id, scene_id, s3_url)
+            print(f"[BACKGROUND TASK] Updated DynamoDB with video URL")
             
-            # Send webhook notification
-            await send_webhook(project_id, f"scene_video_{scene_id}", "done")
+            # Send webhook notification with presigned URL
+            print(f"[BACKGROUND TASK] Sending webhook notification with presigned URL...")
+            webhook_sent = await send_webhook(project_id, f"scene_video_{scene_id}", "done", presigned_url=presigned_url)
+            if webhook_sent:
+                print(f"[BACKGROUND TASK] Scene video generation completed successfully")
+            else:
+                print(f"[BACKGROUND TASK] Scene video generation completed but webhook failed")
         else:
             error_msg = result.get("error", "Unknown error")
+            print(f"[BACKGROUND TASK] Video generation failed: {error_msg}")
+            print(f"[BACKGROUND TASK] Result: {result}")
             update_scene_status(project_id, scene_id, "failed")
             # Send webhook with failed status
             await send_webhook(project_id, f"scene_video_{scene_id}", "failed")
 
     except Exception as e:
+        # Log error with full traceback
+        print(f"[BACKGROUND TASK] Error generating scene video: {e}")
+        import traceback
+        print(f"[BACKGROUND TASK] Traceback: {traceback.format_exc()}")
         update_scene_status(project_id, scene_id, "failed")
         # Send webhook with failed status
         await send_webhook(project_id, f"scene_video_{scene_id}", "failed")

@@ -6,10 +6,14 @@ from pydantic import BaseModel
 
 
 class ImageGenerationRequest(BaseModel):
-    """Schema for image generation request."""
+    """Schema for image generation request.
+    
+    Note: Scene image generation doesn't use global character/setting.
+    These fields are kept for backward compatibility but are ignored.
+    """
 
-    use_global_character: bool = True
-    use_global_setting: bool = True
+    use_global_character: bool = False  # Not used for scene images
+    use_global_setting: bool = False  # Not used for scene images
 
 
 class ImageGenerationResponse(BaseModel):
